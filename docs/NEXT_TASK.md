@@ -2,7 +2,15 @@
 
 ## Goal
 
-Use the implementation repository `https://github.com/pesqSC/DeepSC.git`, branch `BPE`, to establish the exact Teacher -> KD -> Student configuration that will support the IEEE paper.
+Use the **workspace copy of the `DeepSC` repository** to establish the exact Teacher -> KD -> Student configuration that will support the IEEE paper.
+
+The workspace contains both `Prince_SC` and `DeepSC`, so inspect implementation files directly in the workspace. The implementation corresponds to `https://github.com/pesqSC/DeepSC.git`, branch `BPE`.
+
+The authoritative Student/KD training script for this paper is:
+
+`DeepSC/train_multi_vocab_one_student.py`
+
+If other scripts disagree with it, treat them as historical/alternative variants unless the user explicitly asks for a comparison.
 
 The Related Work task is already complete. Do not expand Section II unless a factual correction is needed. The immediate objective is to turn implementation details into a defensible Method/System Model and to clarify how this work differs from the closest prior KD-based semantic communication papers.
 
@@ -17,28 +25,28 @@ Read:
 5. `docs/RESEARCH_DECISIONS.md`
 6. `docs/LITERATURE_REVIEW_NOTES.md`
 
-Then inspect the `BPE` branch of `pesqSC/DeepSC`.
+Then inspect the workspace `DeepSC` repository, branch `BPE`.
 
 ## Primary implementation files
 
-Prioritize:
+Start with:
 
-- `train_multi_vocab_one_student.py`
-- `student.py`
-- `teacher.py`
-- `models/transceiver.py`
-- `models/tx_model.py`
-- `models/rx_model.py`
-- `utils/kd_utils.py`
-- `utils/train_utils.py`
-- `dataset_multilingual.py`
-- `utils/bpe_utils.py`
+- `DeepSC/train_multi_vocab_one_student.py` — authoritative Student/KD training path;
+- `DeepSC/student.py`;
+- `DeepSC/teacher.py`;
+- `DeepSC/models/transceiver.py`;
+- `DeepSC/models/tx_model.py`;
+- `DeepSC/models/rx_model.py`;
+- `DeepSC/utils/kd_utils.py`;
+- `DeepSC/utils/train_utils.py`;
+- `DeepSC/dataset_multilingual.py`;
+- `DeepSC/utils/bpe_utils.py`.
 
-Use `train_student.py`, `R_tr_kd.py`, and other KD scripts only to identify historical/alternate variants. Do not mix their hyperparameters into the active BPE configuration.
+Use `DeepSC/train_student.py`, `DeepSC/R_tr_kd.py`, `DeepSC/kd_training_loss.py`, and other KD scripts only to identify historical/alternate variants. Do not mix their hyperparameters into the active BPE configuration.
 
 ## Verified starting point
 
-The current BPE one-Student path indicates:
+The current authoritative BPE one-Student path indicates:
 
 - frozen/shared Teacher transmitter;
 - frozen Teacher receiver;
@@ -49,18 +57,18 @@ The current BPE one-Student path indicates:
 - Rayleigh channel;
 - Student-training SNR sampled from 2--18 dB;
 - validation SNR default 8 dB;
-- CE + KL-logit KD + semantic-decoder feature alignment;
+- CE + temperature-scaled KL-logit KD + semantic-decoder feature alignment;
 - loss weights 0.6 / 0.3 / 0.1;
 - KD temperature 2.0;
 - CE label smoothing 0.1.
 
-Treat these as implementation facts for the current candidate configuration, not as final publication results.
+Treat these as code-derived implementation facts for the current candidate configuration, not as final publication results.
 
 ## Tasks
 
 ### 1. Architecture audit
 
-Confirm from code:
+Confirm from the authoritative script and model definitions:
 
 - exact DeepSC Teacher architecture;
 - exact Student receiver architecture;
@@ -81,11 +89,13 @@ Using the exact BPE vocabulary/configuration used by the candidate run, compute:
 - reduction percentage and compression ratio;
 - model checkpoint size if measured from actual files.
 
-Do not estimate from architecture alone if vocabulary size/checkpoint details are missing. Mark missing inputs `TBD`.
+Because both repos are in the workspace, prefer computing these values directly from the instantiated models/checkpoints when possible rather than estimating them manually.
+
+Do not report a value as a paper result if the exact publication checkpoint/configuration is not yet fixed; mark it `TBD` or `candidate` as appropriate.
 
 ### 3. KD objective audit
 
-Confirm the active BPE loss mathematically:
+Confirm the active BPE loss mathematically from `train_multi_vocab_one_student.py` and `utils/kd_utils.py`:
 
 - hard-target CE term;
 - temperature-scaled KL term;
@@ -113,13 +123,13 @@ Do not import multilingual/LoRA claims into this paper merely because the BPE br
 
 ### 5. Baseline audit
 
-Determine whether a 4-layer/8-head Student trained **without KD** already exists. If not, flag it as a required experiment.
+Determine whether the **same 4-layer / 8-head Student architecture** has been trained without KD.
 
-The paper should ideally compare:
+If not, flag this as a required experiment. The key controlled comparison should ideally be:
 
 1. Teacher;
-2. same compact Student architecture trained without KD;
-3. same compact Student architecture trained with KD.
+2. 4-layer/8-head Student trained without KD;
+3. the same 4-layer/8-head Student trained with KD using `train_multi_vocab_one_student.py`.
 
 ### 6. Novelty comparison
 
@@ -146,10 +156,10 @@ Do not claim novelty until a concrete difference is supported.
 
 Update:
 
-- `docs/EXPERIMENTS.md` with any newly verified facts;
+- `docs/EXPERIMENTS.md` with newly verified facts;
 - `docs/RESEARCH_DECISIONS.md` if a final experimental configuration is selected.
 
-Create:
+Create/update:
 
 - `docs/IMPLEMENTATION_AUDIT.md`
 

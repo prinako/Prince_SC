@@ -1,218 +1,160 @@
-# Current Codex Task — Related Work
+# Current Codex Task — Audit the BPE KD Implementation
 
 ## Goal
 
-Start the IEEE paper from **Section II: Related Work** for the Knowledge Distillation (KD) semantic communication paper.
+Use the implementation repository `https://github.com/pesqSC/DeepSC.git`, branch `BPE`, to establish the exact Teacher -> KD -> Student configuration that will support the IEEE paper.
 
-For this task, focus only on literature research, source verification, bibliography preparation, and drafting the Related Work section. Do not write Results, Abstract, Conclusion, or invent experimental details.
+The Related Work task is already complete. Do not expand Section II unless a factual correction is needed. The immediate objective is to turn implementation details into a defensible Method/System Model and to clarify how this work differs from the closest prior KD-based semantic communication papers.
 
 ## Required preparation
 
-Before writing, read:
+Read:
 
 1. `AGENTS.md`
 2. `docs/PROJECT_CONTEXT.md`
 3. `docs/PAPER_PLAN.md`
 4. `docs/EXPERIMENTS.md`
 5. `docs/RESEARCH_DECISIONS.md`
-6. `.agents/skills/academic-research-writer/SKILL.md`
+6. `docs/LITERATURE_REVIEW_NOTES.md`
 
-Use the `academic-research-writer` skill and its source-verification and IEEE-citation guidance.
+Then inspect the `BPE` branch of `pesqSC/DeepSC`.
 
-## Research question for this literature review
-
-The Related Work section must establish what has already been done in:
-
-- Transformer/deep-learning-based text semantic communication;
-- efficient, lightweight, or compressed semantic communication models;
-- Knowledge Distillation for model compression, especially Transformers and sequence models;
-- Knowledge Distillation used directly in semantic communication or closely related communication-system settings;
-- the remaining research gap that motivates evaluating a compact Student distilled from a larger text semantic communication Teacher.
-
-The paper's scope is strictly:
-
-**Semantic Communication Teacher -> Knowledge Distillation -> smaller Student model**
-
-Do not mix the paper contribution with the separate LoRA/multilingual/personalized-receiver research direction.
-
-## Literature-search strategy
-
-Perform a dedicated search before making any novelty claim.
-
-Use combinations of terms such as:
-
-- `semantic communication knowledge distillation`
-- `text semantic communication knowledge distillation`
-- `DeepSC knowledge distillation`
-- `semantic communications model compression`
-- `lightweight semantic communication transformer`
-- `efficient semantic communication neural network`
-- `semantic communication pruning distillation compression`
-- `knowledge distillation transformer compression`
-- `knowledge distillation sequence generation transformer`
-- `teacher student semantic communication`
+## Primary implementation files
 
 Prioritize:
 
-- IEEE Xplore;
-- ACM Digital Library;
-- peer-reviewed journal and conference versions;
-- reputable publishers and proceedings;
-- published versions over arXiv when both exist.
+- `train_multi_vocab_one_student.py`
+- `student.py`
+- `teacher.py`
+- `models/transceiver.py`
+- `models/tx_model.py`
+- `models/rx_model.py`
+- `utils/kd_utils.py`
+- `utils/train_utils.py`
+- `dataset_multilingual.py`
+- `utils/bpe_utils.py`
 
-Foundational older papers are allowed when necessary, especially for Knowledge Distillation and Transformer foundations. For the semantic-communication state of the art, prioritize recent literature.
+Use `train_student.py`, `R_tr_kd.py`, and other KD scripts only to identify historical/alternate variants. Do not mix their hyperparameters into the active BPE configuration.
 
-## Source-verification rules
+## Verified starting point
 
-For every source used in the paper:
+The current BPE one-Student path indicates:
 
-- verify the title;
-- verify the complete author list or correct IEEE-author representation;
-- verify venue;
-- verify publication year;
-- verify volume/issue/pages when applicable;
-- verify DOI when available;
-- confirm whether the source is peer-reviewed or a preprint;
-- confirm that the paper actually supports the claim attached to its citation.
+- frozen/shared Teacher transmitter;
+- frozen Teacher receiver;
+- receiver-only Student;
+- Teacher: 8 Transformer layers, 16 attention heads, `d_model=128`, `dff=512`;
+- Student: 4 decoder layers, 8 attention heads, `d_model=128`, `dff=512`;
+- BPE vocabulary and maximum sequence length 67;
+- Rayleigh channel;
+- Student-training SNR sampled from 2--18 dB;
+- validation SNR default 8 dB;
+- CE + KL-logit KD + semantic-decoder feature alignment;
+- loss weights 0.6 / 0.3 / 0.1;
+- KD temperature 2.0;
+- CE label smoothing 0.1.
 
-Do not copy citation metadata from an unverified secondary webpage when the publisher or proceedings record is available.
+Treat these as implementation facts for the current candidate configuration, not as final publication results.
 
-Do not fabricate or guess BibTeX fields.
+## Tasks
 
-## Novelty / research-gap rule
+### 1. Architecture audit
 
-Do **not** write statements such as:
+Confirm from code:
 
-- `This is the first work...`
-- `No prior work has...`
-- `Knowledge Distillation has not been applied to semantic communication...`
+- exact DeepSC Teacher architecture;
+- exact Student receiver architecture;
+- which components are shared/frozen;
+- which components are trainable;
+- dimensions of the channel encoder/decoder bottleneck;
+- whether the Student differs from the Teacher only by decoder depth/heads or also by other dimensions.
 
-unless the dedicated literature search provides sufficient evidence for that claim.
+Record exact file/function references in notes.
 
-If related KD-for-semantic-communication papers exist, describe them accurately and distinguish this paper through concrete differences such as:
+### 2. Parameter/compression audit
 
-- text modality;
-- Transformer architecture;
+Using the exact BPE vocabulary/configuration used by the candidate run, compute:
+
+- full Teacher parameter count;
+- Teacher receiver-only parameter count;
+- Student receiver parameter count;
+- reduction percentage and compression ratio;
+- model checkpoint size if measured from actual files.
+
+Do not estimate from architecture alone if vocabulary size/checkpoint details are missing. Mark missing inputs `TBD`.
+
+### 3. KD objective audit
+
+Confirm the active BPE loss mathematically:
+
+- hard-target CE term;
+- temperature-scaled KL term;
+- decoder-feature alignment term;
+- masking behavior;
+- label smoothing;
+- loss weights;
+- temperature.
+
+Distinguish active code from commented/legacy feature losses.
+
+### 4. Data and channel audit
+
+Confirm:
+
+- exact dataset used for the English KD study;
+- BPE preprocessing/tokenizer/vocabulary size;
+- split sizes;
+- maximum sequence length;
+- training SNR sampling;
+- validation/evaluation SNRs;
+- channel model.
+
+Do not import multilingual/LoRA claims into this paper merely because the BPE branch contains multilingual infrastructure.
+
+### 5. Baseline audit
+
+Determine whether a 4-layer/8-head Student trained **without KD** already exists. If not, flag it as a required experiment.
+
+The paper should ideally compare:
+
+1. Teacher;
+2. same compact Student architecture trained without KD;
+3. same compact Student architecture trained with KD.
+
+### 6. Novelty comparison
+
+Compare the verified implementation directly against:
+
+- Liu et al., IEEE TWC 2024 (`liu2024kdsemcom`);
+- Eid et al., 2026 preprint (`eid2026krumdeepsc`).
+
+Build a small comparison matrix covering at least:
+
+- modality;
 - Teacher/Student placement;
-- receiver/model compression objective;
-- training objective;
-- evaluation across noisy channels;
-- quality-efficiency trade-off.
+- receiver-only vs end-to-end compression;
+- architecture reduction;
+- KD signals/losses;
+- channel setting;
+- training/evaluation SNR treatment;
+- baselines;
+- deployment/complexity metrics.
 
-If the exact novelty boundary is still uncertain, use cautious wording such as `This work investigates...` and document the unresolved novelty question in the literature notes.
+Do not claim novelty until a concrete difference is supported.
 
-## Required thematic structure
+## Deliverables
 
-Draft Section II thematically, not as a paper-by-paper list.
+Update:
 
-Recommended flow:
+- `docs/EXPERIMENTS.md` with any newly verified facts;
+- `docs/RESEARCH_DECISIONS.md` if a final experimental configuration is selected.
 
-### 1. Text Semantic Communication
+Create:
 
-Cover the evolution from conventional bit-level communication toward learned semantic representations, with DeepSC-style Transformer text semantic communication as the principal baseline/foundation.
+- `docs/IMPLEMENTATION_AUDIT.md`
 
-Explain only what is needed to position this paper.
+The audit should contain exact code-derived evidence and a `TBD / requires run confirmation` section.
 
-### 2. Efficient / Lightweight Semantic Communication
+Do **not** write numerical Results into `PAPER-prince.tex` unless they come from validated final runs.
 
-Review work aimed at reducing computation, memory, transmission overhead, model size, or deployment cost in semantic communication.
-
-Distinguish model-side efficiency from communication-side bandwidth/channel efficiency.
-
-### 3. Knowledge Distillation and Transformer Compression
-
-Introduce KD as Teacher-to-Student knowledge transfer and review strong Transformer/sequence-model distillation work relevant to this architecture.
-
-Do not over-expand into a generic KD survey; connect each cited method to why KD is appropriate for the semantic communication Student.
-
-### 4. KD in Semantic / Communication Systems and Research Gap
-
-Identify papers that use KD directly in semantic communication or closely related learned communication systems.
-
-Conclude with the specific gap this paper will address, using only claims supported by the search.
-
-The final IEEE section may use subsections if they improve clarity, but keep it concise enough for a conference paper.
-
-## Deliverable 1 — Literature notes
-
-Create or update:
-
-`docs/LITERATURE_REVIEW_NOTES.md`
-
-For each candidate source, record at least:
-
-- BibTeX/citation key;
-- full title;
-- authors;
-- year;
-- venue;
-- DOI or authoritative source URL when available;
-- peer-reviewed / preprint status;
-- theme/category;
-- 2-4 sentence relevance summary;
-- exact claim(s) it can support in the paper;
-- whether it should be cited in Section II;
-- any uncertainty or verification issue.
-
-Also include a short `Research-gap assessment` summarizing what the search supports and what remains uncertain.
-
-## Deliverable 2 — Bibliography
-
-Update `paper.bib` with the verified sources actually cited in the Related Work section.
-
-Requirements:
-
-- preserve useful existing entries;
-- avoid duplicate entries for the same publication;
-- prefer stable, descriptive citation keys;
-- use published metadata when available;
-- include DOI where verified;
-- do not add papers that are not relevant merely to increase reference count.
-
-## Deliverable 3 — IEEE Related Work section
-
-Update `PAPER-prince.tex` by adding a polished:
-
-`\section{Related Work}`
-
-The section must:
-
-- use concise IEEE-style technical English;
-- synthesize literature rather than list papers;
-- cite every externally sourced factual claim;
-- clearly connect prior work to the Teacher -> KD -> Student problem;
-- distinguish semantic-communication efficiency from general model compression;
-- end with a carefully supported research-gap paragraph;
-- avoid any experimental result or parameter value that is still `TBD`.
-
-Do not draft the Abstract or Results in this task.
-
-## Quality target
-
-Prefer a smaller set of highly relevant, verified sources over a long bibliography of weakly related papers. The full paper will eventually need broader coverage, but this task should establish a defensible Related Work foundation.
-
-Before finishing:
-
-- cross-check every `\cite{...}` against `paper.bib`;
-- ensure every new bibliography entry is cited or intentionally documented for later use;
-- check for duplicate papers;
-- verify that the Related Work does not claim contributions belonging to the LoRA/multilingual paper;
-- note any unresolved literature gap explicitly in `docs/LITERATURE_REVIEW_NOTES.md` rather than hiding uncertainty.
-
-## Expected output from Codex
-
-After making the changes, report:
-
-1. files changed;
-2. number and categories of verified sources reviewed;
-3. which sources were added to `paper.bib`;
-4. the final thematic structure of Section II;
-5. whether the search found prior KD work directly in semantic communication;
-6. the exact research-gap wording used or why it remains provisional;
-7. any citations or claims that still require human verification.
-
-## Execution status — 2026-09-18
-
-The Related Work task has been executed: Section II is drafted, ten cited sources have been added to `paper.bib`, and `docs/LITERATURE_REVIEW_NOTES.md` records source verification and the provisional research-gap assessment. Citation consistency and duplicate checks passed. Full LaTeX/BibTeX compilation remains unperformed because the local TeX toolchain is unavailable.
-
-The literature does establish prior KD-based text SC. Before finalizing novelty or contribution bullets, confirm the actual compression target, training objective and evaluation protocol and compare them directly with Liu et al. (2024) and Eid et al. (2026 preprint). This is a recommended follow-up, not experimental work completed by this task.
+After the audit is complete, the next paper-writing step will be Section III (System Model) and Section IV (Knowledge Distillation Framework) based on the verified BPE implementation.

@@ -7,11 +7,11 @@ Audit date: 2026-09-18. Status: **implementation inspection and candidate-artifa
 Authority is `DeepSC/train_multi_vocab_one_student.py`, not historical Student scripts. Workspace repositories inspected directly:
 
 - `Prince_SC`, branch `paper-kd-student`, starting commit `7ed272c3497a1ed5f6d6b9567787dd846c553f02`;
-- sibling `DeepSC`, branch `BPE`, commit `b66afb331500f0e193b5d99f03a1f289b4f16e7f`.
+- sibling `DeepSC`, branch `BPE`, original audit commit `b66afb331500f0e193b5d99f03a1f289b4f16e7f`; fixes verified at current revision `dee57fbff8c42fce74e2a9974b25f15b74143548`.
 
-DeepSC had a pre-existing modification to `test_BPE.ipynb`; it was read and preserved. No implementation, checkpoint, dataset, or notebook was changed, and no training or reconstruction-quality experiment was run. CPU checks used the existing DeepSC `.venv` with CUDA disabled. The academic-research-writer skill guided evidence separation and the primary-source comparison below.
+The original audit read and preserved a pre-existing modification to `test_BPE.ipynb`. At the verified revision this identical cleaned notebook is committed, and the DeepSC working tree is clean. No implementation, checkpoint, dataset, or notebook was changed, and no training or reconstruction-quality experiment was run. CPU checks used the existing DeepSC `.venv` with CUDA disabled. The academic-research-writer skill guided evidence separation and the primary-source comparison below.
 
-The source map uses paths relative to DeepSC; line numbers identify the inspected revision. Notebook cell numbers below are zero-based and refer to the inspected working tree.
+The source map uses paths relative to DeepSC; line numbers identify the original audit revision unless explicitly updated below. The current training script has shifted subsequent lines by four; the feature helper has shifted subsequent lines by six. Notebook cell numbers below are zero-based and refer to the inspected working tree.
 
 | Evidence | Location |
 |---|---|
@@ -31,6 +31,20 @@ The source map uses paths relative to DeepSC; line numbers identify the inspecte
 | Candidate artifact association / evaluation demonstrations | `test_BPE.ipynb`, cells 3, 7–9, 26, 31, 48, 52, 58 |
 
 `teacher.py`, `utils/train_utils.py`, and `main_multi_vocab.py` were also inspected to distinguish supporting helpers and possible Teacher training from the active KD path. Imported `build_teacher` and `validate_multi_epoch` do not control the active model construction/validation. `masked_ce_loss` and `create_masks` imported through `train_utils` resolve to `model_utils`. Historical `train_student.py` and `R_tr_kd.py` supply no configuration facts in this audit.
+
+### Revision verification — 2026-09-18
+
+The cumulative diff from the original audit to `dee57fbff8c42fce74e2a9974b25f15b74143548` changes only the authoritative training script, `utils/kd_utils.py`, and `test_BPE.ipynb`. The following fixes are verified in current code:
+
+| Item | Current evidence | Status |
+|---|---|---|
+| Consistent SNR conversion | Training and validation use imported `snr_to_noise`; divergent local helper removed | Fixed |
+| Validation SNR flag | `train_multi_vocab_one_student.py:483`: `snr_to_noise(float(args.val_snr_db))` | Fixed |
+| CLI weight decay | `train_multi_vocab_one_student.py:496`: `weight_decay = args.weight_decay` | Fixed |
+| Feature denominator | `utils/kd_utils.py:103–104`: valid count clamped to at least one | Fixed |
+| Notebook cleanup | All code-cell execution counts are null and outputs empty; committed hash matches the previously audited working tree | Verified |
+
+Focused checks evaluated the actual validation and optimizer argument expressions with distinct train/validation SNR values and a nondefault weight decay. CPU checks confirmed finite zero feature loss and gradients on all-PAD targets, and unchanged squared-cosine loss on a mixed mask. Notebook JSON checks confirmed cleared execution/output fields. No training or quality evaluation was run. The fixes do not establish how older artifacts were trained, or resolve the independent checkpoint, split, baseline, and evaluation-protocol issues below.
 
 ## 2. Architecture and forward path
 
@@ -82,13 +96,13 @@ The feature term is
 u_i^S = h_i^S / (||h_i^S||_2 + 1e−8)
 u_i^T = h_i^T / (||h_i^T||_2 + 1e−8)
 c_i = dot(u_i^S, u_i^T)
-L_feat = sum_i m_i (1 − c_i)² / N
+L_feat = sum_i m_i (1 − c_i)² / max(N, 1)
 L = 0.6 L_CE + 0.3 L_KD + 0.1 L_feat.
 ```
 
 This is squared cosine-to-one alignment of the **final decoder features**, not ordinary vector MSE, not layer-by-layer matching, and not an active channel-decoder loss. The commented channel-decoder MSE and generic alternative utilities must not enter the Methods description. Because the norm uses an additive epsilon, the implemented c_i is a stabilized cosine expression.
 
-CPU synthetic checks verified the CE formula, KL masking, and zero gradient at PAD positions for all three terms. An all-PAD feature-loss input produces non-finite output because its denominator is not guarded, unlike CE/KL. Actual audited sequences contain non-PAD targets; this is an edge-case limitation, not evidence the candidate run encountered NaNs.
+CPU synthetic checks verified the CE formula, KL masking, and zero gradient at PAD positions for all three terms. The original revision lacked a feature-loss denominator guard. The current revision clamps the count to at least one; a finite all-PAD input now returns zero loss and zero gradients. Mixed-mask behavior is unchanged. Actual audited sequences contain non-PAD targets; the original edge case was not evidence that the candidate run encountered NaNs.
 
 ## 4. Data, tokenizer, and split audit
 
@@ -134,13 +148,9 @@ Training samples SNR uniformly in dB per batch from [2,18] in range mode. Fixed 
 sigma_train(s) = 1 / sqrt(2 × 10^(s/10)).
 ```
 
-Validation's local helper instead uses
+Validation now uses the same imported helper with `s = args.val_snr_db` (default 8 dB). Both paths therefore produce sigma **0.2815042799 at 8 dB**. The validation argument was checked with a value different from the training argument.
 
-```text
-sigma_val(s) = 10^(−s/20), with s = args.snr_db.
-```
-
-`args.val_snr_db` is never read. At nominal 8 dB, the standard deviations are 0.2815042799 and 0.3981071706. The variance ratio is **2**, equivalent to a 3.0103 dB decrease under the training convention. This numerical discrepancy is independent of additional effects from the RMS cap and Rayleigh equalization. Validation draws fresh channel noise; it is not a fixed bank of channel realizations.
+Historically, the original audit revision used a separate `10^(−s/20)` helper and the training SNR argument for validation, producing twice the noise variance at equal nominal SNR. This discrepancy and the ignored validation flag are **fixed in the current revision**. Older artifact provenance remains unconfirmed; no rerun is inferred from the fix. The RMS cap and Rayleigh equalization still affect realized signal/noise behavior. Validation draws fresh channel noise; it is not a fixed bank of channel realizations.
 
 AWGN and Rician (K=1 in the helper) are selectable, but code availability is not evidence of completed experiments. Final evaluation SNR grid is unselected. The notebook's integer 0–29 dB loop concerns a hand-entered sentence. Legacy `performance.py` is a word-level full-model path, including an unresolved `SNR_to_noise` import, and must not supply the current BPE evaluation protocol.
 
@@ -176,7 +186,7 @@ Checkpoint tensors show eight/four layers and V=96,000, but cannot verify attent
 
 ## 7. Optimization, baseline availability, and evaluation evidence
 
-Adam trains only Student parameters with defaults LR 1e-4, betas (0.9,0.98), epsilon 1e-8; weight decay is hardcoded 5e-4 despite the parsed option. Batch size is 32, gradient norm clipping 1.0, epochs 10, workers 0. Seed 42 initializes Python/NumPy/PyTorch and deterministic cuDNN settings; the script does not establish a multiple-seed experimental protocol. There is no scheduler, early stopping, optimizer resume state, or comprehensive run manifest.
+Adam trains only Student parameters with defaults LR 1e-4, betas (0.9,0.98), epsilon 1e-8; weight decay now uses `args.weight_decay`, default 5e-4. The original ignored-flag issue is fixed, and a nondefault value was checked. Batch size is 32, gradient norm clipping 1.0, epochs 10, workers 0. Seed 42 initializes Python/NumPy/PyTorch and deterministic cuDNN settings; the script does not establish a multiple-seed experimental protocol. There is no scheduler, early stopping, optimizer resume state, or comprehensive run manifest.
 
 Epoch diagnostics average per-batch losses, giving a final short batch equal weight. CE_PPL is based on smoothed CE and is not corpus perplexity. Saves go to `save_dir/one_student/YYYY-MM-DD`; each epoch writes receiver component states, and best selection minimizes validation composite loss. CSV helper numbering adds one to the caller's already incremented epoch, so CSV starts at 2 while checkpoints start at 1. Date-only destinations can mix repeated runs. Metadata omits the command, source revision, architecture, SNR settings, tokenizer/data hashes, optimizer state, and RNG state.
 
@@ -206,7 +216,7 @@ Primary sources checked: Liu et al., *IEEE TWC* 2024, bibliography key `liu2024k
 | Architecture reduction | 4→2 Transformer layers; additional channel pruning/quantization variants | 4→2 layers; FFN 512→256; width 128, eight heads | Decoder 8→4 layers; heads 16→8; width 128 and FFN 512 unchanged |
 | KD signals | CE and KL-based output/component transfer | CE, logit KL, feature MSE, decoder cosine, residual term | Smoothed CE + KL(Teacher||Student) + squared cosine-to-one decoder alignment |
 | Channel | Rayleigh/perfect CSI; interference scenarios | AWGN/Rayleigh, perfect CSI; residual two-stream transmitter | Rayleigh/perfect CSI; batch-shared fading; identical noisy latent for both receivers |
-| SNR treatment | No-interference: Teacher 10–15, transfer 15–18, evaluation 0–18 dB | Train 5–10; evaluate {0,3,6,9,12,18} dB | Train uniform 2–18 dB; nominal validation 8 has conversion mismatch; final grid TBD |
+| SNR treatment | No-interference: Teacher 10–15, transfer 15–18, evaluation 0–18 dB | Train 5–10; evaluate {0,3,6,9,12,18} dB | Train uniform 2–18 dB; validation 8 uses the same conversion (fixed revision); final grid TBD |
 | Baselines | Matched no-KD Students, DeepSC, conventional schemes | Single Teacher, ensemble, single-Teacher KD, ablations | Matched CE-only baseline still required |
 | Deployment metrics | Parameters, size, training/inference time | Non-embedding parameters and inference timing | Full receiver parameters and actual file bytes measured; latency TBD |
 
@@ -220,7 +230,7 @@ A defensible investigation would test whether this particular receiver replaceme
 |---|---|---|
 | 1 | Candidate Student is incompatible with current max-length construction | Original run command/revision or a documented corrected rerun; explicitly resolve positional buffer |
 | 1 | Default vocabulary/data/checkpoint paths do not locate available artifacts | Consistent explicit data root and immutable artifact manifest |
-| 1 | Validation uses a different noise convention and ignores its SNR flag | Chosen SNR definition, corrected implementation/run protocol, corresponding reruns if needed |
+| 1 | Older checkpoint runs are not tied to the corrected validation/noise implementation | Record corrected revision and SNR arguments in publication runs; determine which historical runs require repetition |
 | 1 | Test file used for model selection; eight cross-split duplicate sequences | Separate validation and held-out test with documented content overlap policy |
 | 1 | No matched CE-only baseline located | Verified four-layer/eight-head baseline artifact and run record |
 | 2 | Exact publication Teacher/Student and tokenizer provenance | Designated hashes, training/preprocessing commands, corpus version, source revision |
@@ -238,8 +248,8 @@ All paths below are relative to DeepSC. Hashes were computed directly; these est
 
 | Artifact | SHA-256 |
 |---|---|
-| `train_multi_vocab_one_student.py` | `0ee7d4ba2305068ef2faada21229b244d34e5155928dbf84d339c6213f378287` |
-| Working-tree `test_BPE.ipynb` | `5f8dc51b56b5eb1a13062b6ad671e67bad735908e28deb52d7771ebdaadec53e` |
+| Current `train_multi_vocab_one_student.py` | `7aa7355aac29a946d408012ddee4e6ad38139201a96890b1a36f3be7d736998b` |
+| Current committed `test_BPE.ipynb` (same as original audited working tree) | `5f8dc51b56b5eb1a13062b6ad671e67bad735908e28deb52d7771ebdaadec53e` |
 | `results/base_model/2026-09-15/encoder_26.pth` | `6194bd33ca8f15620286ac28ba1e2bd44e1d19f7a6faefea01be39e0d3614917` |
 | `results/base_model/2026-09-15/decoder_26.pth` | `44b80a2e2992214429a009822ff2a3fd48950d7e2077e451c9038675fb94bcab` |
 | `results/student/2026-09-17/student_03.pth` | `cfdaae2a68761db3a2e807b641ee142f1a4c42178e37afcfe45a3f7024a9450f` |

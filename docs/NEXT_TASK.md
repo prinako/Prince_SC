@@ -210,3 +210,9 @@ After making the changes, report:
 5. whether the search found prior KD work directly in semantic communication;
 6. the exact research-gap wording used or why it remains provisional;
 7. any citations or claims that still require human verification.
+
+## Execution status — 2026-09-18
+
+The Related Work task has been executed: Section II is drafted, ten cited sources have been added to `paper.bib`, and `docs/LITERATURE_REVIEW_NOTES.md` records source verification and the provisional research-gap assessment. Citation consistency and duplicate checks passed. Full LaTeX/BibTeX compilation remains unperformed because the local TeX toolchain is unavailable.
+
+The literature does establish prior KD-based text SC. Before finalizing novelty or contribution bullets, confirm the actual compression target, training objective and evaluation protocol and compare them directly with Liu et al. (2024) and Eid et al. (2026 preprint). This is a recommended follow-up, not experimental work completed by this task.

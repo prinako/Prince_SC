@@ -58,12 +58,31 @@ Federated Learning;
 % INTRO
 Modern Machine Learning 
 
+\section{Related Work}
+\label{sec:related-work}
+
+\subsection{Text Semantic Communication}
+DeepSC formulates text transmission as a learned semantic communication task: Transformer-based processing supports sentence reconstruction over noisy channels, with the objective of recovering meaning rather than solely minimizing bit or symbol errors~\cite{xie2021deepsc}. Its use of sentence similarity alongside lexical reconstruction evaluation motivates assessing both semantic preservation and text fidelity~\cite{xie2021deepsc}. This framework provides the architectural context for studying knowledge transfer from a larger semantic communication Teacher to a compact Student.
+
+\subsection{Efficient and Lightweight Semantic Communication}
+Efficiency in semantic communication involves distinct model and transmission costs. L-DeepSC addresses deployment constraints through pruning and reduced weight precision, while also reducing the overhead of distributing model weights between the cloud/edge and devices~\cite{xie2021lite}. More recently, BidDeepSC-1.58b combines a shared bidirectional encoder--decoder architecture, low-bit quantization, and adaptable network widths~\cite{do2026biddeepsc}. These approaches illustrate that parameter storage and computation must be distinguished from the resources needed to transmit semantic representations. Accordingly, this paper treats Student model compression as its objective; reductions in channel use or bandwidth require separate evidence.
+
+\subsection{Knowledge Distillation and Transformer Compression}
+Knowledge distillation trains a Student using information supplied by a Teacher. The formulation of Hinton et al. uses softened output distributions to convey information beyond hard training labels~\cite{hinton2015distilling}. For sequence generation, Kim and Rush study word-level and sequence-level distillation in neural machine translation, demonstrating that the training targets and decoding procedure both matter when evaluating compact sequence models~\cite{kim2016sequencekd}. Their study concerns recurrent translation models rather than Transformer-based communication systems. TinyBERT provides a complementary Transformer-specific approach, transferring embedding, hidden-state, attention, and prediction information through general and task-specific distillation stages~\cite{jiao2020tinybert}. Together, these studies motivate examining the supervision available from a semantic communication Teacher, without prescribing which distillation losses the present implementation uses.
+
+\subsection{Distillation in Semantic Communication and Research Positioning}
+KD has already been applied directly to text semantic communication. Liu et al. study Transformer-based semantic encoders and decoders with neural channel coding under multi-user interference, combining knowledge transfer with model compression~\cite{liu2024kdsemcom}. Their evaluation includes compact models trained without KD, BLEU and sentence similarity, and varying noise and interference conditions~\cite{liu2024kdsemcom}. Thus, text modality, Transformer compression, and evaluation over noisy channels are already represented in the literature.
+
+Other studies explore complementary deployment settings. Dynamic KD adapts semantic models to heterogeneous edge-device resource constraints~\cite{albaseer2024dynamickd}, while robust KD and lightweight architecture search transfer large-model capabilities to compact semantic encoders for image classification~\cite{ding2026robustkd}. A recent preprint by Eid et al. also studies compact DeepSC Students, combining teacher selection with residual channel representations and evaluating text quality and efficiency under channel variability~\cite{eid2026krumdeepsc}.
+
+These precedents establish substantial overlap with the proposed setting~\cite{liu2024kdsemcom,eid2026krumdeepsc}. This work investigates the reconstruction-quality--model-complexity trade-off when a compact Transformer-based text semantic communication Student learns from a larger Teacher. Its intended evaluation separates the Teacher, a compact Student trained without KD where available, and the Student trained with KD under consistent channel and decoding conditions. The specific distinction from prior KD-based semantic communication remains provisional until the compression target, training objective, and experimental protocol are confirmed.
+
 \section*{Acknowledgement}
 This research was funded by CNPq (Brazil), under grants \#444978/2024-0, 201007/2025-8 and \#405026/2024-2.
 
 
 
-\bibliographystyle{ieeetr}
+\bibliographystyle{IEEEtran}
 \bibliography{paper}
 
 \end{document}

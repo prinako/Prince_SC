@@ -10,6 +10,14 @@ The paper focuses on this pipeline only:
 
 Do not merge this contribution with the separate multilingual/personalized-receiver work based on LoRA unless the user explicitly asks for cross-paper discussion.
 
+## Current task
+
+The current active paper task is defined in:
+
+- `docs/NEXT_TASK.md`
+
+Read that file before starting substantive work. At present, the task is to research, verify, and draft **Section II: Related Work** only, including literature notes and verified bibliography updates.
+
 ## Research objective
 
 Investigate whether Knowledge Distillation can reduce the size and computational cost of a Transformer-based text semantic communication model while preserving semantic reconstruction quality across noisy channel conditions.
@@ -26,6 +34,7 @@ Do not invent results, architecture dimensions, parameter counts, loss weights, 
 
 Before substantial paper work, read:
 
+- `docs/NEXT_TASK.md`
 - `docs/PROJECT_CONTEXT.md`
 - `docs/PAPER_PLAN.md`
 - `docs/EXPERIMENTS.md`

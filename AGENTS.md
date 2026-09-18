@@ -10,25 +10,47 @@ The paper focuses on this pipeline only:
 
 Do not merge this contribution with the separate multilingual/personalized-receiver work based on LoRA unless the user explicitly asks for cross-paper discussion.
 
+## Implementation source of truth
+
+The implementation repository is:
+
+- `https://github.com/pesqSC/DeepSC.git`
+- active implementation branch: `BPE`
+
+When a paper statement depends on the actual model, KD loss, dataset/tokenization, channel configuration, checkpoint, or evaluation code, inspect the `BPE` branch before writing it as fact.
+
+Relevant files currently include:
+
+- `train_multi_vocab_one_student.py` — current BPE receiver-KD training path;
+- `student.py` — receiver-only Student definition;
+- `teacher.py` — Teacher helper functions;
+- `models/transceiver.py` — DeepSC architecture;
+- `models/tx_model.py` and `models/rx_model.py` — separated transmitter/receiver wrappers;
+- `utils/kd_utils.py` — KD and feature-distillation losses;
+- `utils/train_utils.py` — training/validation helpers;
+- `dataset_multilingual.py` and `utils/bpe_utils.py` — BPE data/tokenization support.
+
+Older/alternate KD scripts such as `train_student.py` and `R_tr_kd.py` exist on the branch. Do not silently mix their hyperparameters or loss definitions with the BPE configuration used for the final paper.
+
 ## Current task
 
 The current active paper task is defined in:
 
 - `docs/NEXT_TASK.md`
 
-Read that file before starting substantive work. At present, the task is to research, verify, and draft **Section II: Related Work** only, including literature notes and verified bibliography updates.
+Read that file before starting substantive work. The Related Work task has been completed. The current follow-up is to audit the BPE implementation, confirm the exact Teacher/Student/KD configuration, and use it to refine the paper's novelty boundary against the closest prior work.
 
 ## Research objective
 
-Investigate whether Knowledge Distillation can reduce the size and computational cost of a Transformer-based text semantic communication model while preserving semantic reconstruction quality across noisy channel conditions.
+Investigate whether Knowledge Distillation can reduce the size and computational cost of a Transformer-based text semantic communication receiver while preserving semantic reconstruction quality across noisy channel conditions.
 
 The core comparison should distinguish:
 
-1. the original Teacher semantic communication model;
+1. the original Teacher semantic communication model/receiver;
 2. a smaller Student trained without KD, when such a baseline is available;
 3. the smaller Student trained with KD.
 
-Do not invent results, architecture dimensions, parameter counts, loss weights, SNR values, datasets, or checkpoints. If the repository/context files do not establish a value, mark it as `TBD` and ask for or locate the experimental record before using it as a paper fact.
+Do not invent results, architecture dimensions, parameter counts, loss weights, SNR values, datasets, or checkpoints. If the repository/context files do not establish a value, mark it as `TBD` and locate the experimental record before using it as a paper fact.
 
 ## Required context
 
@@ -39,6 +61,7 @@ Before substantial paper work, read:
 - `docs/PAPER_PLAN.md`
 - `docs/EXPERIMENTS.md`
 - `docs/RESEARCH_DECISIONS.md`
+- `docs/LITERATURE_REVIEW_NOTES.md` when working on positioning or citations.
 
 Keep those files updated when a research decision or confirmed experimental fact changes.
 
@@ -72,7 +95,7 @@ For literature claims:
 
 The broader research project also studies a shared semantic transmitter with personalized receivers, multilingual adaptation, and LoRA (including Portuguese and potentially other languages). That is a separate paper/research direction.
 
-For this repository, keep the contribution centered on model compression/knowledge transfer from the SC Teacher to the Student.
+The active `BPE` implementation branch contains multilingual/BPE code because it is shared by the wider project. For this paper, use only the English/KD evidence needed to study Teacher-to-Student receiver compression unless the user explicitly expands the scope.
 
 ## Working branch
 

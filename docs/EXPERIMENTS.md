@@ -1,233 +1,122 @@
 # Experiments — Source of Truth for the KD Paper
 
-This file separates **verified implementation facts** from **final publication choices/results**. Codex must not turn provisional items into final paper claims.
+Updated 2026-09-18 after direct inspection of the workspace DeepSC repository. **Code defaults, measured candidate artifacts, and final publication results are different evidence levels. No final run is selected here.** Exact references, loss equations, artifact hashes, checks, and prior-work comparison appear in [IMPLEMENTATION_AUDIT.md](IMPLEMENTATION_AUDIT.md).
 
-## 0. Implementation source
+## 1. Authority and scope
 
-Implementation repository:
+Implementation: `https://github.com/pesqSC/DeepSC.git`, branch `BPE`, inspected commit `b66afb331500f0e193b5d99f03a1f289b4f16e7f`. The authoritative Student training script is **`train_multi_vocab_one_student.py`**. Its supporting model, data, preprocessing, KD, channel, and evaluation code were inspected directly. The existing modified `test_BPE.ipynb` was inspected as working-tree evidence and preserved.
 
-- `https://github.com/pesqSC/DeepSC.git`
-- branch: `BPE`
+The paper studies **English text reconstruction with a frozen Teacher transmitter and a smaller receiver trained by KD**. Multilingual tokenizer infrastructure does not establish a multilingual KD contribution. LoRA and personalized multilingual receivers remain outside scope. `train_student.py`, `R_tr_kd.py`, and alternate losses do not define this configuration.
 
-Primary BPE KD training path currently inspected:
+## 2. Architecture and trainability — code verified
 
-- `train_multi_vocab_one_student.py`
+| Component | Teacher | Student |
+|---|---|---|
+| Semantic encoder | 8 layers, 16 heads | Uses the frozen Teacher transmitter |
+| Channel encoder | Linear 128→256, ReLU, Linear 256→16 | Same transmitted/noisy latent |
+| Channel decoder | Linear 16→128→512→128, ReLU, residual, LayerNorm | Same architecture; independently trainable |
+| Semantic decoder | 8 layers, 16 heads | 4 layers, 8 heads |
+| Model / feed-forward width | 128 / 512 | 128 / 512 |
+| Vocabulary / output head | Candidate V=96,000; untied Linear 128→V | Same vocabulary and head dimensions |
+| Positional capacity in current script | 67 | 67 |
+| Dropout default | 0.1 | 0.1 |
+| During Student training | Transmitter and entire Teacher receiver frozen, eval mode | Entire receiver trainable, train mode |
 
-Supporting files:
+The Student has no semantic/channel encoder. Both receivers see the **same realization** of the noisy transmitted tensor. Student initialization is fresh; the `--init-student-from-teacher` flag is unused. Attention projections retain width 128: reducing head count alone does **not** reduce their parameter count. The layer reduction supplies the parameter saving.
 
-- `student.py`
-- `teacher.py`
-- `models/transceiver.py`
-- `models/tx_model.py`
-- `models/rx_model.py`
-- `utils/kd_utils.py`
-- `utils/train_utils.py`
-- `dataset_multilingual.py`
-- `utils/bpe_utils.py`
+## 3. Candidate artifacts and measured parameters
 
-Important: older/alternate scripts (`train_student.py`, `R_tr_kd.py`, `kd_training_loss.py`) contain different KD configurations. Do not merge their hyperparameters into the BPE configuration unless explicitly comparing variants.
+The default checkpoint directory is `./checkpoints/deepsc-Rayleigh/multilingual_bpe/2026-09-15`, with hardcoded filenames `encoder_26.pth` and `decoder_26.pth`. These defaults do not resolve to the available artifacts. The notebook associates the following actual files with the 2026-09-12 BPE data:
 
-## 1. Teacher — current BPE candidate
+- `results/base_model/2026-09-15/encoder_26.pth`;
+- `results/base_model/2026-09-15/decoder_26.pth`;
+- `results/student/2026-09-17/student_03.pth`.
 
-Role: high-capacity DeepSC text semantic communication model. During Student KD training, the transmitter and Teacher receiver are frozen.
+Their tensors establish V=96,000 and decoder depths 8/4. Head counts are code facts, not recoverable from these tensor shapes. The notebook association does not prove the original training command, tokenizer identity, or code revision.
 
-Components:
+Counts below were computed from the actual model classes and checked against checkpoint component tensors, excluding positional buffers:
 
-- semantic encoder: `encoder`
-- channel encoder: `channel_encoder`
-- channel decoder: `channel_decoder`
-- semantic decoder: `decoder`
-- output projection/head: `dense`
+| Candidate component / deployment | Parameters |
+|---|---:|
+| Teacher semantic encoder | 13,874,176 |
+| Teacher channel encoder | 37,136 |
+| Teacher channel decoder | 134,144 |
+| Teacher semantic decoder, including embedding | 14,404,608 |
+| Teacher output projection | 12,384,000 |
+| Full Teacher | **40,834,064** |
+| Teacher receiver only | **26,922,752** |
+| Student receiver only | **25,864,448** |
+| Shared transmitter plus Student receiver | 39,775,760 |
 
-Current BPE script configuration:
+Receiver saving: **1,058,304 parameters, 3.9309%**, or Teacher-RX/Student-RX **1.0409×**. Full deployed pipeline saving is **2.5917%**. Do not describe the halved decoder depth as a 50% reduction of receiver parameters. The large embedding and untied vocabulary projection dominate both receivers.
 
-- Transformer layers: **8**
-- model dimension: **128**
-- attention heads: **16**
-- feed-forward dimension: **512**
-- dropout: **0.1**
-- maximum sequence length: **67**
+Measured serialized files: Teacher transmitter **55,726,451 bytes**, Teacher receiver **107,802,247 bytes**, Student receiver **152,651,397 bytes**. The Student file is larger despite fewer parameters: its positional buffer is `[1,96000,128]`, versus `[1,67,128]` in the current script and Teacher. Strict loading into the current Student configuration **fails on this buffer**. Therefore these files do not yet support a deployment-storage reduction claim or an exact current-script run claim. Resolve provenance/configuration before publication; no checkpoint was modified during this audit.
 
-Current code-default Teacher checkpoint directory:
+## 4. Active KD objective
 
-`./checkpoints/deepsc-Rayleigh/multilingual_bpe/2026-09-15`
+`L = 0.6 L_CE + 0.3 L_KD + 0.1 L_feat`, temperature **T=2**.
 
-with:
+- CE: token cross-entropy, label smoothing **0.1**, average over non-PAD shifted targets.
+- KD: **KL(Teacher || Student)** between temperature-softened token distributions, averaged over the same mask and multiplied by **T²**.
+- Features: final semantic decoder vectors, each normalized by `L2 norm + 1e-8`; average **squared deviation of their cosine similarity from one**, `(1−cos)²`, over non-PAD shifted targets. This is not raw feature MSE or channel-decoder matching.
 
-- `encoder_26.pth`
-- `decoder_26.pth`
+Teacher forcing uses `trg[:, :-1]` to predict `trg[:, 1:]`; language and EOS tokens contribute, PAD does not. Transmitter and Teacher forward passes run under `no_grad`. Channel-decoder feature MSE is commented out. Exact equations and masking caveats are in the audit.
 
-This checkpoint path is a verified code default, but it is **not yet designated as the final publication Teacher checkpoint**.
+## 5. Data and BPE — measured candidate, not final split selection
 
-Final Teacher parameter count: **TBD — compute from the exact BPE vocabulary/checkpoint used for the publication run**.
+`EurParallelDatasetBPE(args.en, split)` defaults to **en_en** and the hardcoded undated directory `./data/train/europarl_bpe`. The vocabulary flag alone does not redirect dataset files. Undated defaults are missing in this workspace; dated artifacts exist.
 
-## 2. Student — current BPE candidate
+Candidate: `data/train/europarl_bpe/2026-09-12/`. Its JSON mapping matches all 96,000 SentencePiece entries; the tokenizer includes 256 byte pieces. PAD/START/END/UNK IDs are 0/1/2/3 and EN/PT/ES/FR IDs are 4/5/6/7.
 
-Role: receiver-only Student. It receives the noisy latent representation from the frozen/shared Teacher transmitter and contains:
+| Artifact | Pairs | Unique source sequences | Stored sequence length |
+|---|---:|---:|---:|
+| `train_en_en.pkl` | **1,391,914** | 1,391,875 | 7–67 |
+| `test_en_en.pkl` | **154,651** | 154,650 | 7–66 |
 
-- `channel_decoder`
-- semantic `decoder`
-- output `dense` head
+All inspected English pairs have identical source/target sequences and `[START, EN, content, END]` structure. **Eight unique token sequences occur in both splits.** The training script uses `test` for validation and best-checkpoint selection; it does not provide an untouched third split. These counts must not be described as independent train/validation/test evidence.
 
-Current BPE Student configuration:
+Preprocessing code uses Europarl JSON, NFKC/lowercase/punctuation/whitespace normalization, an ID-based 90/10 split with default seed 48, and SentencePiece BPE trained from training IDs across enabled language pairs. It filters content lengths 4–64 and adds three special tokens. Exact corpus release, preprocessing invocation, tokenizer training provenance, split repair, and final held-out test remain **TBD**. The separate 2026-09-11 tokenizer has V=32,000 and must not be mixed with the 96,000-token checkpoints.
 
-- Transformer decoder layers: **4**
-- model dimension: **128**
-- attention heads: **8**
-- feed-forward dimension: **512**
-- dropout: **0.1**
-- maximum sequence length: **67**
+## 6. Channel and SNR — validation discrepancy
 
-Compared with the current BPE Teacher configuration, the Student reduces decoder depth from 8 to 4 layers and attention heads from 16 to 8 while keeping `d_model=128` and `dff=512`.
+Default channel: **Rayleigh**; AWGN/Rician are optional code paths, not established publication experiments. The transmitter emits 16 real values (8 complex symbols) per source position. Power normalization caps batch-wide RMS at one; it does not increase power below that threshold. Padding participates in this operation.
 
-Final Student parameter count: **TBD**
+Rayleigh uses one complex fading coefficient for the whole batch, adds independent real Gaussian noise, and equalizes with the exact channel inverse (perfect CSI). No multiuser interference is implemented in this active path.
 
-Final compression ratio relative to the Teacher receiver: **TBD**
+Training samples SNR uniformly in dB from **2 to 18 per batch**, or uses `--snr-db` in fixed mode. Its helper uses `sigma=1/sqrt(2*10^(SNR/10))`.
 
-Student-without-KD baseline available: **TBD — must be trained/evaluated explicitly if used in the paper**.
+**Validation instead uses `sigma=10^(−args.snr_db/20)` and ignores `--val-snr-db`.** At the default label 8 dB, training sigma is 0.2815043, validation sigma is 0.3981072: validation noise variance is twice as large, a **3.0103 dB discrepancy under the training convention**. Do not state that training and validation use a consistent 8 dB conversion. Final SNR convention and evaluation grid remain TBD.
 
-## 3. Knowledge Distillation — current BPE candidate
+## 7. Optimization and checkpoint selection
 
-The current BPE path freezes both the transmitter and Teacher receiver during Student training.
+Defaults: batch 32; 10 epochs; Adam LR 1e-4, betas (0.9, 0.98), epsilon 1e-8; gradient clipping 1.0; seed 42; workers 0. Weight decay is hardcoded **5e-4**, ignoring the parsed flag. No scheduler, resume state, or early stopping is configured.
 
-The implemented training objective combines three terms:
+Best checkpoint minimizes the validation **composite KD loss**, not BLEU. Epoch values are batch means, not corpus token-weighted means. CE_PPL is a smoothed-CE diagnostic, not standard corpus perplexity. CSV epoch numbering is one ahead of checkpoint numbering. Same-day saves can overwrite prior checkpoints and append to an existing CSV.
 
-`L = alpha * L_CE + beta * L_KD + gamma * L_feat`
+Student metadata stores epoch, validation loss, loss weights, temperature, and channel, but omits architecture, tokenizer/data hashes, SNR, seed, optimizer/RNG state, and implementation revision. Candidate `student_03.pth` records epoch 3 and the default KD weights/temperature/Rayleigh; this is insufficient to reconstruct its run.
 
-Current defaults:
+Audit environment, **not proven training environment**: Python 3.12.13, PyTorch 2.13.0+cu130, NumPy 2.4.2, SentencePiece 0.2.2, SacreBLEU 2.6.0, NLTK 3.10.2, sentence-transformers 5.4.1. Publication hardware and run environment remain TBD.
 
-- `alpha = 0.6`
-- `beta = 0.3`
-- `gamma = 0.1`
-- temperature `T = 2.0`
+## 8. Baselines, decoding, and metrics
 
-### Hard-target term
+No matching **4-layer/8-head CE-only Student** run was identified in the inspected scripts/artifact inventory. Sixteen Student checkpoints were examined; the sole 4-layer/96,000-token candidate has active KD metadata. Absence from this workspace is not proof no such run exists elsewhere. Train or locate and verify this required baseline.
 
-`L_CE` is masked token cross-entropy with label smoothing **0.1**.
+`--alpha 1 --beta 0 --gamma 0` expresses the CE-only objective in this script, with the same label smoothing and frozen transmitter; it still computes the unused Teacher/KD terms. This is a proposed baseline recipe, **not an executed experiment**, and path/protocol issues must be resolved first.
 
-### Logit distillation term
+BPE greedy and beam utilities exist. The notebook compares Teacher **greedy** with Student **beam size 10**, length penalty 0.7; its 0–29 dB sweep is a sentence demonstration, not validated dataset-level evidence. Final comparisons must use matched decoding and channel draws.
 
-`L_KD` is temperature-scaled KL divergence between Student and Teacher token distributions, masked over non-PAD tokens and scaled by `T^2`.
+Available metrics include SacreBLEU sentence BLEU (exponential smoothing), corpus BLEU, and sentence-transformer cosine similarity. The default semantic model is `sentence-transformers/paraphrase-multilingual-mpnet-base-v2`; notebook alternatives exist. A mean of sentence BLEU is not corpus BLEU, and NLTK [0,1] scores must not be mixed with SacreBLEU [0,100] scores. Final metric signature, semantic model/revision, aggregation, seeds, latency protocol, and hardware are TBD.
 
-### Feature distillation term
+| Required model | Receiver | Candidate parameter count | Validated final quality / latency |
+|---|---|---:|---|
+| Teacher | 8 layers / 16 heads | 26,922,752 | TBD |
+| Student without KD | 4 layers / 8 heads | 25,864,448 if V=96,000 | Run not identified; TBD |
+| Student with KD | 4 layers / 8 heads | 25,864,448 | TBD |
 
-The active BPE path applies feature alignment to the **semantic decoder outputs** (`s_dec_out` vs. `t_rx_dec`).
+## 9. Before publication experiments and Methods drafting
 
-The function `feature_distillation_loss_cosine_normalized` normalizes Teacher and Student features, computes token-wise cosine similarity, and penalizes deviation from perfect alignment with an MSE-to-one objective over non-PAD target positions.
-
-Channel-decoder feature matching exists in comments/alternate utilities but is **not active in the current BPE training path**.
-
-## 4. Dataset and BPE preprocessing — current candidate
-
-Current training class:
-
-`EurParallelDatasetBPE`
-
-Current default language pair used by the one-Student script:
-
-- `en_en`
-
-Current vocabulary file:
-
-`./data/train/europarl_bpe/vocab_bpe.json`
-
-Tokenization: **BPE**
-
-Maximum sequence length: **67**
-
-Training split size: **TBD — derive from the actual BPE dataset files used in the publication run**
-
-Validation/test split size: **TBD**
-
-Although the implementation branch contains multilingual datasets and language-pair options, this KD paper should use only the English/KD evidence needed for the Teacher-to-Student compression study unless the scope is explicitly changed.
-
-## 5. Channel configuration — current BPE candidate
-
-Current default channel:
-
-- **Rayleigh**
-
-Student training SNR mode:
-
-- random SNR sampled uniformly from **2 dB to 18 dB** per batch when `snr_mode=range`
-
-Validation SNR default:
-
-- **8 dB**
-
-The implementation also exposes AWGN and Rician options, but they are not automatically part of the publication experiment matrix.
-
-Final evaluation SNR grid for BLEU/semantic plots: **TBD**
-
-## 6. Optimization and reproducibility — current BPE defaults
-
-- batch size: **32**
-- epochs: **10**
-- learning rate: **1e-4**
-- optimizer: **Adam**
-- Adam betas: **(0.9, 0.98)**
-- epsilon: **1e-8**
-- weight decay: **5e-4**
-- gradient clipping: **1.0**
-- random seed: **42**
-
-Final publication hardware/GPU and software versions: **TBD**
-
-## 7. Decoding
-
-Greedy decoding and beam decoding have both been used/discussed in the wider project.
-
-Final decoding method for the quantitative KD paper comparison: **TBD**
-
-If both are reported, hold all other evaluation settings constant.
-
-## 8. Metrics
-
-Metrics known to be relevant:
-
-- BLEU;
-- semantic similarity / semantic metric;
-- parameter count;
-- model size;
-- inference latency/complexity if measured;
-- optionally perplexity/CE for training diagnostics only.
-
-Exact BLEU implementation/configuration: **TBD**
-
-Exact semantic metric/model: **TBD**
-
-Latency hardware and timing protocol: **TBD**
-
-## 9. Required result matrix
-
-At minimum, aim to populate:
-
-| Model | KD | Receiver architecture | Params | Size | BLEU @ SNR(s) | Semantic metric @ SNR(s) | Latency |
-|---|---:|---|---:|---:|---:|---:|---:|
-| Teacher | N/A | 8 layers / 16 heads | TBD | TBD | TBD | TBD | TBD |
-| Student baseline | No | 4 layers / 8 heads | TBD | TBD | TBD | TBD | TBD |
-| Student KD | Yes | 4 layers / 8 heads | TBD | TBD | TBD | TBD | TBD |
-
-## 10. Important implementation distinction
-
-Older `train_student.py` uses a different candidate configuration (12-layer Teacher and 2-layer Student) and currently has feature distillation commented out. `R_tr_kd.py` also defines another receiver-only KD formulation. These are useful historical/ablation references but should not be mixed with the current BPE experiment description.
-
-## 11. Reproducibility checklist before Results are final
-
-Confirm and record:
-
-- exact BPE vocabulary size;
-- exact train/validation/test split sizes;
-- final Teacher checkpoint;
-- final Student checkpoint;
-- Teacher and Student parameter counts;
-- compression ratio;
-- Student-without-KD training recipe;
-- final channel evaluation SNR grid;
-- decoding configuration;
-- BLEU configuration;
-- semantic metric/model;
-- random seeds used for final runs;
-- software versions;
-- hardware/GPU;
-- inference timing procedure if latency is reported.
+1. Resolve paths and the Student positional-buffer/run-provenance discrepancy; designate exact Teacher, Student, vocabulary, and data artifacts.
+2. Establish a consistent SNR/noise convention and separate validation from untouched test data; address token-sequence overlap.
+3. Produce the matched CE-only baseline and KD ablations; fix shared decoding, SNR grid, seeds/channel trials, and metric signatures.
+4. Measure reconstruction quality and deployment cost on the finalized protocol. Parameter savings alone establish neither quality preservation nor faster inference/storage savings.
+5. Write Section III (System Model) and Section IV (KD Framework) from the verified architecture/objective, explicitly retaining unresolved experimental choices as TBD. Use the audit's prior-work matrix to bound the contribution. No final Results or novelty claim is authorized by this audit.

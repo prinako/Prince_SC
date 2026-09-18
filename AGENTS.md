@@ -10,27 +10,36 @@ The paper focuses on this pipeline only:
 
 Do not merge this contribution with the separate multilingual/personalized-receiver work based on LoRA unless the user explicitly asks for cross-paper discussion.
 
-## Implementation source of truth
+## Workspace and implementation source of truth
 
-The implementation repository is:
+The Codex workspace contains both repositories:
 
-- `https://github.com/pesqSC/DeepSC.git`
-- active implementation branch: `BPE`
+- `Prince_SC` — IEEE paper repository;
+- `DeepSC` — implementation repository corresponding to `https://github.com/pesqSC/DeepSC.git`.
 
-When a paper statement depends on the actual model, KD loss, dataset/tokenization, channel configuration, checkpoint, or evaluation code, inspect the `BPE` branch before writing it as fact.
+For implementation-dependent paper work, inspect the **workspace copy of `DeepSC` directly** rather than relying only on summaries in the paper repository.
 
-Relevant files currently include:
+The active implementation branch is:
 
-- `train_multi_vocab_one_student.py` — current BPE receiver-KD training path;
-- `student.py` — receiver-only Student definition;
-- `teacher.py` — Teacher helper functions;
-- `models/transceiver.py` — DeepSC architecture;
-- `models/tx_model.py` and `models/rx_model.py` — separated transmitter/receiver wrappers;
-- `utils/kd_utils.py` — KD and feature-distillation losses;
-- `utils/train_utils.py` — training/validation helpers;
-- `dataset_multilingual.py` and `utils/bpe_utils.py` — BPE data/tokenization support.
+- `DeepSC`: `BPE`
 
-Older/alternate KD scripts such as `train_student.py` and `R_tr_kd.py` exist on the branch. Do not silently mix their hyperparameters or loss definitions with the BPE configuration used for the final paper.
+The authoritative Student/KD training script for this paper is:
+
+- `DeepSC/train_multi_vocab_one_student.py`
+
+Treat this script as the primary source for the Student architecture, Teacher configuration used for KD, active loss terms, hyperparameters, dataset/tokenization path, channel configuration, SNR sampling, optimizer setup, and checkpoint naming.
+
+Supporting implementation files include:
+
+- `DeepSC/student.py` — receiver-only Student definition;
+- `DeepSC/teacher.py` — Teacher helper functions;
+- `DeepSC/models/transceiver.py` — DeepSC architecture;
+- `DeepSC/models/tx_model.py` and `DeepSC/models/rx_model.py` — separated transmitter/receiver wrappers;
+- `DeepSC/utils/kd_utils.py` — KD and feature-distillation losses;
+- `DeepSC/utils/train_utils.py` — training/validation helpers;
+- `DeepSC/dataset_multilingual.py` and `DeepSC/utils/bpe_utils.py` — BPE data/tokenization support.
+
+Older or alternate KD scripts such as `DeepSC/train_student.py`, `DeepSC/R_tr_kd.py`, and `DeepSC/kd_training_loss.py` are historical/alternative variants. Do not use them to define the paper configuration unless the user explicitly asks for a comparison. If they conflict with `train_multi_vocab_one_student.py`, the latter controls the current paper setup.
 
 ## Current task
 
@@ -50,7 +59,7 @@ The core comparison should distinguish:
 2. a smaller Student trained without KD, when such a baseline is available;
 3. the smaller Student trained with KD.
 
-Do not invent results, architecture dimensions, parameter counts, loss weights, SNR values, datasets, or checkpoints. If the repository/context files do not establish a value, mark it as `TBD` and locate the experimental record before using it as a paper fact.
+Do not invent results, architecture dimensions, parameter counts, loss weights, SNR values, datasets, or checkpoints. If the repositories/context files do not establish a value, mark it as `TBD` and locate the experimental record before using it as a paper fact.
 
 ## Required context
 

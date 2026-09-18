@@ -39,3 +39,11 @@ For Codex, expose the skill under `.agents/skills/academic-research-writer/`. Th
 - Verify novelty claims with a dedicated literature search.
 - Prefer the final published version of a reference over a preprint when available.
 - Keep the KD paper contribution separate from the multilingual/LoRA contribution.
+
+## 2026-09-18 — Related Work positioning after dedicated search
+
+**Finding:** KD-based Transformer text semantic communication and compact no-KD comparisons already appear in Liu et al., IEEE TWC 2024 (doi:10.1109/TWC.2023.3336941). A closely overlapping DeepSC compression preprint by Eid et al. also appeared in September 2026 (arXiv:2609.13405).
+
+**Writing decision:** Section II describes Prince_SC as an investigation of the reconstruction-quality/model-complexity trade-off. Its specific novelty remains provisional pending confirmation of the implementation and experiments; text modality, Transformer use and noisy-channel evaluation alone do not distinguish the paper.
+
+**Evidence:** See `docs/LITERATURE_REVIEW_NOTES.md` for verified metadata, claim support, search limitations and follow-up checks. No experimental TBD has been resolved by this literature task.

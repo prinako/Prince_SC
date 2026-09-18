@@ -4,7 +4,7 @@ Updated 2026-09-18 after direct inspection of the workspace DeepSC repository. *
 
 ## 1. Authority and scope
 
-Implementation: `https://github.com/pesqSC/DeepSC.git`, branch `BPE`, inspected commit `b66afb331500f0e193b5d99f03a1f289b4f16e7f`. The authoritative Student training script is **`train_multi_vocab_one_student.py`**. Its supporting model, data, preprocessing, KD, channel, and evaluation code were inspected directly. The existing modified `test_BPE.ipynb` was inspected as working-tree evidence and preserved.
+Implementation: `https://github.com/pesqSC/DeepSC.git`, branch `BPE`, current verified commit `dee57fbff8c42fce74e2a9974b25f15b74143548`. The authoritative Student training script is **`train_multi_vocab_one_student.py`**. Its supporting model, data, preprocessing, KD, channel, and evaluation code were inspected directly. The cleaned `test_BPE.ipynb` is now committed with cleared execution/output fields; its contents match the working-tree version inspected in the original audit. The DeepSC working tree was clean at revision verification.
 
 The paper studies **English text reconstruction with a frozen Teacher transmitter and a smaller receiver trained by KD**. Multilingual tokenizer infrastructure does not establish a multilingual KD contribution. LoRA and personalized multilingual receivers remain outside scope. `train_student.py`, `R_tr_kd.py`, and alternate losses do not define this configuration.
 
@@ -58,7 +58,7 @@ Measured serialized files: Teacher transmitter **55,726,451 bytes**, Teacher rec
 
 - CE: token cross-entropy, label smoothing **0.1**, average over non-PAD shifted targets.
 - KD: **KL(Teacher || Student)** between temperature-softened token distributions, averaged over the same mask and multiplied by **T²**.
-- Features: final semantic decoder vectors, each normalized by `L2 norm + 1e-8`; average **squared deviation of their cosine similarity from one**, `(1−cos)²`, over non-PAD shifted targets. This is not raw feature MSE or channel-decoder matching.
+- Features: final semantic decoder vectors, each normalized by `L2 norm + 1e-8`; average **squared deviation of their cosine similarity from one**, `(1−cos)²`, over non-PAD shifted targets, with the denominator clamped to at least one (all-PAD inputs return zero for finite features). This is not raw feature MSE or channel-decoder matching.
 
 Teacher forcing uses `trg[:, :-1]` to predict `trg[:, 1:]`; language and EOS tokens contribute, PAD does not. Transmitter and Teacher forward passes run under `no_grad`. Channel-decoder feature MSE is commented out. Exact equations and masking caveats are in the audit.
 
@@ -77,7 +77,7 @@ All inspected English pairs have identical source/target sequences and `[START, 
 
 Preprocessing code uses Europarl JSON, NFKC/lowercase/punctuation/whitespace normalization, an ID-based 90/10 split with default seed 48, and SentencePiece BPE trained from training IDs across enabled language pairs. It filters content lengths 4–64 and adds three special tokens. Exact corpus release, preprocessing invocation, tokenizer training provenance, split repair, and final held-out test remain **TBD**. The separate 2026-09-11 tokenizer has V=32,000 and must not be mixed with the 96,000-token checkpoints.
 
-## 6. Channel and SNR — validation discrepancy
+## 6. Channel and SNR — conversion fixed
 
 Default channel: **Rayleigh**; AWGN/Rician are optional code paths, not established publication experiments. The transmitter emits 16 real values (8 complex symbols) per source position. Power normalization caps batch-wide RMS at one; it does not increase power below that threshold. Padding participates in this operation.
 
@@ -85,11 +85,11 @@ Rayleigh uses one complex fading coefficient for the whole batch, adds independe
 
 Training samples SNR uniformly in dB from **2 to 18 per batch**, or uses `--snr-db` in fixed mode. Its helper uses `sigma=1/sqrt(2*10^(SNR/10))`.
 
-**Validation instead uses `sigma=10^(−args.snr_db/20)` and ignores `--val-snr-db`.** At the default label 8 dB, training sigma is 0.2815043, validation sigma is 0.3981072: validation noise variance is twice as large, a **3.0103 dB discrepancy under the training convention**. Do not state that training and validation use a consistent 8 dB conversion. Final SNR convention and evaluation grid remain TBD.
+**Fixed in verified revision `dee57fbff8c42fce74e2a9974b25f15b74143548`:** validation now calls the same `snr_to_noise` helper using **`args.val_snr_db`**, default 8 dB. At 8 dB both paths use sigma 0.2815043. The previous factor-of-two variance discrepancy is resolved in current code; this does not retroactively establish the settings or validity of older checkpoint runs. The final evaluation grid and publication run remain TBD.
 
 ## 7. Optimization and checkpoint selection
 
-Defaults: batch 32; 10 epochs; Adam LR 1e-4, betas (0.9, 0.98), epsilon 1e-8; gradient clipping 1.0; seed 42; workers 0. Weight decay is hardcoded **5e-4**, ignoring the parsed flag. No scheduler, resume state, or early stopping is configured.
+Defaults: batch 32; 10 epochs; Adam LR 1e-4, betas (0.9, 0.98), epsilon 1e-8; gradient clipping 1.0; seed 42; workers 0. Weight decay now uses **`args.weight_decay`**, default **5e-4**; a nondefault CLI value was checked. No scheduler, resume state, or early stopping is configured.
 
 Best checkpoint minimizes the validation **composite KD loss**, not BLEU. Epoch values are batch means, not corpus token-weighted means. CE_PPL is a smoothed-CE diagnostic, not standard corpus perplexity. CSV epoch numbering is one ahead of checkpoint numbering. Same-day saves can overwrite prior checkpoints and append to an existing CSV.
 
@@ -116,7 +116,7 @@ Available metrics include SacreBLEU sentence BLEU (exponential smoothing), corpu
 ## 9. Before publication experiments and Methods drafting
 
 1. Resolve paths and the Student positional-buffer/run-provenance discrepancy; designate exact Teacher, Student, vocabulary, and data artifacts.
-2. Establish a consistent SNR/noise convention and separate validation from untouched test data; address token-sequence overlap.
+2. Use the corrected SNR/validation settings in documented publication runs; separate validation from untouched test data and address token-sequence overlap.
 3. Produce the matched CE-only baseline and KD ablations; fix shared decoding, SNR grid, seeds/channel trials, and metric signatures.
 4. Measure reconstruction quality and deployment cost on the finalized protocol. Parameter savings alone establish neither quality preservation nor faster inference/storage savings.
 5. Write Section III (System Model) and Section IV (KD Framework) from the verified architecture/objective, explicitly retaining unresolved experimental choices as TBD. Use the audit's prior-work matrix to bound the contribution. No final Results or novelty claim is authorized by this audit.

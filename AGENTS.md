@@ -21,25 +21,34 @@ For implementation-dependent paper work, inspect the **workspace copy of `DeepSC
 
 The active implementation branch is:
 
-- `DeepSC`: `BPE`
+- `DeepSC`: `all`
+
+Current audited `all` revision (2026-09-19):
+
+- `4a67a4c3131908b1b47ce9979d9093c5b7aee370`
+
+This branch is 7 commits ahead of the previously audited `BPE` revision `0d3b119c9215fb22f427d3aa7c9629c9a7cdc18c`. The BPE-to-`all` delta changes the synchronized preprocessing, multilingual dataset loader, and Teacher training pipeline; it does not change the authoritative KD script below. See `docs/ALL_BRANCH_SYNC_2026-09-19.md` before using implementation-dependent values.
 
 The authoritative Student/KD training script for this paper is:
 
 - `DeepSC/train_multi_vocab_one_student.py`
 
-Treat this script as the primary source for the Student architecture, Teacher configuration used for KD, active loss terms, hyperparameters, dataset/tokenization path, channel configuration, SNR sampling, optimizer setup, and checkpoint naming.
+Treat this script as the primary source for the Student architecture, Teacher configuration expected by KD, active loss terms, Student hyperparameters, channel configuration, SNR sampling, optimizer setup, and checkpoint naming. Note that the current script has not yet been fully synchronized with the new `all` preprocessing/Teacher interface; do not silently replace its Student settings with Teacher defaults.
 
 Supporting implementation files include:
 
+- `DeepSC/data_perprocess/process_multilingual_deepsc.py` — current synchronized BPE preprocessing and split protocol;
+- `DeepSC/main_multi_vocab.py` — current Teacher-training pipeline;
 - `DeepSC/student.py` — receiver-only Student definition;
 - `DeepSC/teacher.py` — Teacher helper functions;
 - `DeepSC/models/transceiver.py` — DeepSC architecture;
 - `DeepSC/models/tx_model.py` and `DeepSC/models/rx_model.py` — separated transmitter/receiver wrappers;
 - `DeepSC/utils/kd_utils.py` — KD and feature-distillation losses;
 - `DeepSC/utils/train_utils.py` — training/validation helpers;
-- `DeepSC/dataset_multilingual.py` and `DeepSC/utils/bpe_utils.py` — BPE data/tokenization support.
+- `DeepSC/dataset_multilingual.py` and `DeepSC/utils/bpe_utils.py` — BPE data/tokenization support;
+- `DeepSC/metrics/metrics_bpe.py` — available BPE evaluation metrics.
 
-Older or alternate KD scripts such as `DeepSC/train_student.py`, `DeepSC/R_tr_kd.py`, and `DeepSC/kd_training_loss.py` are historical/alternative variants. Do not use them to define the paper configuration unless the user explicitly asks for a comparison. If they conflict with `train_multi_vocab_one_student.py`, the latter controls the current paper setup.
+Older or alternate KD scripts such as `DeepSC/train_student.py`, `DeepSC/R_tr_kd.py`, and `DeepSC/kd_training_loss.py` are historical/alternative variants. Do not use them to define the paper configuration unless the user explicitly asks for a comparison. If they conflict with `train_multi_vocab_one_student.py`, the latter controls the current paper KD setup.
 
 ## Current task
 
@@ -70,6 +79,7 @@ Before substantial paper work, read:
 - `docs/PAPER_PLAN.md`
 - `docs/EXPERIMENTS.md`
 - `docs/RESEARCH_DECISIONS.md`
+- `docs/ALL_BRANCH_SYNC_2026-09-19.md`
 - `docs/LITERATURE_REVIEW_NOTES.md` when working on positioning or citations.
 
 Keep those files updated when a research decision or confirmed experimental fact changes.
@@ -104,7 +114,7 @@ For literature claims:
 
 The broader research project also studies a shared semantic transmitter with personalized receivers, multilingual adaptation, and LoRA (including Portuguese and potentially other languages). That is a separate paper/research direction.
 
-The active `BPE` implementation branch contains multilingual/BPE code because it is shared by the wider project. For this paper, use only the English/KD evidence needed to study Teacher-to-Student receiver compression unless the user explicitly expands the scope.
+The active `all` implementation branch contains multilingual/BPE infrastructure because it is shared by the wider project. For this paper, use only the English/KD evidence needed to study Teacher-to-Student receiver compression unless the user explicitly expands the scope.
 
 ## Working branch
 

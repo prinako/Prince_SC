@@ -10,6 +10,8 @@
 \usepackage{graphicx}
 \usepackage{textcomp}
 \usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit}
 \usepackage{flushend}
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
@@ -32,7 +34,7 @@
 \begin{document}
 
 
-\title{Generic Title: Securing Semantic Communication}
+\title{Knowledge Distillation for Efficient Transformer-Based Semantic Communication}
 
 
 
@@ -46,17 +48,25 @@ André~Riker\IEEEauthorrefmark{1}\IEEEauthorrefmark{2}}
 
 \begin{abstract}
 
-Abstract ....
+\textit{TBD: abstract pending final validated experimental results.}
 
 \end{abstract}
 
 \begin{IEEEkeywords}
-Federated Learning; 
+Semantic communication, knowledge distillation, deep learning, Transformer, model compression.
 \end{IEEEkeywords}
 
 \section{Introduction}
-% INTRO
-Modern Machine Learning 
+Semantic communication shifts the design objective from reproducing transmitted symbols to recovering information relevant to the receiving task. For text transmission, DeepSC combines Transformer-based semantic processing with learned channel coding to reconstruct sentences over noisy channels~\cite{xie2021deepsc}. This setting motivates evaluating both lexical fidelity and preservation of meaning: a receiver must remain useful when channel noise changes the representation from which it generates text.
+
+Receiver deployment also requires attention to model storage and inference cost. Lightweight semantic communication has been investigated through pruning and reduced precision~\cite{xie2021lite}. Here, the compression target is the semantic communication receiver, while the original transmitter is retained. Reducing decoder depth is a concrete architectural change, but its effect on total parameter count and runtime must be measured, especially when embeddings and vocabulary projections remain unchanged.
+
+Knowledge distillation (KD) provides supervision from a larger Teacher to a compact Student~\cite{hinton2015distilling}. In the present design, both receivers observe exactly the same noisy representation from the frozen Teacher transmitter. The Student learns from reference tokens, softened Teacher predictions, and final decoder features. This arrangement permits an investigation of receiver replacement without jointly redesigning the transmitter.
+
+KD for semantic communication is established prior work, including the multi-user framework of Liu et al.~\cite{liu2024kdsemcom} and the recent DeepSC compression preprint of Eid et al.~\cite{eid2026krumdeepsc}. Accordingly, this study asks whether distillation improves a particular compact receiver relative to training the same architecture with reconstruction supervision alone, while preserving reconstruction quality across noisy channels. It does not presume either originality of KD in this domain or a favorable quality--efficiency trade-off.
+
+The study specifies a receiver-only compression architecture, an implemented three-term distillation objective, and a controlled comparison among the Teacher, a cross-entropy-only (CE-only) Student, and an identically sized KD Student. A new data partition, training-only tokenizer, and retrained Teacher define the publication protocol. Reconstruction quality and deployment cost will be assessed using matched decoding and channel conditions; quantitative conclusions remain pending validated experiments. Section~\ref{sec:related-work} reviews prior work, Sections~\ref{sec:system} and~\ref{sec:kd} describe the system and objective, and Section~\ref{sec:experiments} specifies the experimental protocol.
+
 
 \section{Related Work}
 \label{sec:related-work}
@@ -75,7 +85,138 @@ KD has already been applied directly to text semantic communication. Liu et al. 
 
 Other studies explore complementary deployment settings. Dynamic KD adapts semantic models to heterogeneous edge-device resource constraints~\cite{albaseer2024dynamickd}, while robust KD and lightweight architecture search transfer large-model capabilities to compact semantic encoders for image classification~\cite{ding2026robustkd}. A recent preprint by Eid et al. also studies compact DeepSC Students, combining teacher selection with residual channel representations and evaluating text quality and efficiency under channel variability~\cite{eid2026krumdeepsc}.
 
-These precedents establish substantial overlap with the proposed setting~\cite{liu2024kdsemcom,eid2026krumdeepsc}. This work investigates the reconstruction-quality--model-complexity trade-off when a compact Transformer-based text semantic communication Student learns from a larger Teacher. Its intended evaluation separates the Teacher, a compact Student trained without KD where available, and the Student trained with KD under consistent channel and decoding conditions. The specific distinction from prior KD-based semantic communication remains provisional until the compression target, training objective, and experimental protocol are confirmed.
+These precedents establish substantial overlap with the proposed setting~\cite{liu2024kdsemcom,eid2026krumdeepsc}. This work investigates receiver-only compression while retaining the frozen Teacher transmitter. The compact receiver learns from reference tokens, Teacher logits, and final semantic-decoder features under the same noisy observation. The planned evaluation compares the Teacher with identically sized CE-only and KD Students under matched channel and decoding conditions. This defines the implementation examined here; global novelty and performance benefits are not inferred from these design choices.
+
+\section{System Model}
+\label{sec:system}
+\subsection{Text Representation and Transmitter}
+Let $\mathbf{x}=(x_1,\ldots,x_L)$ denote an encoded sentence over a vocabulary $\mathcal{V}$ of size $V$, including beginning-of-sequence, English control, and end-of-sequence tokens. Sequences are padded within a batch; padding masks are supplied to attention. The Teacher transmitter comprises semantic encoder $E_{\theta}$ and channel encoder $C_{\theta}$:
+\begin{equation}
+ \mathbf{U}=E_{\theta}(\mathbf{x}),\qquad
+ \mathbf{A}=C_{\theta}(\mathbf{U}).
+\end{equation}
+For batch size $B$ and padded length $L$, $\mathbf{U}\in\mathbb{R}^{B\times L\times128}$ and $\mathbf{A}\in\mathbb{R}^{B\times L\times16}$. The semantic encoder has eight Transformer layers with 16 attention heads, model width 128, and feed-forward width 512. The channel encoder is a $128\to256\to16$ linear network with an intermediate ReLU.
+
+The implementation caps the batch-wide root-mean-square (RMS) amplitude:
+\begin{equation}
+ r=\sqrt{\frac{1}{16BL}\sum_{b,\ell,k} A_{b\ell k}^{2}},
+ \qquad \mathbf{X}=\frac{\mathbf{A}}{\max(1,r)}.
+ \label{eq:power}
+\end{equation}
+This operation includes padded positions and does not increase amplitudes when $r<1$. It is therefore a batch-wide power cap, rather than exact per-sentence unit-power normalization.
+
+\subsection{Channel and Equalized Representation}
+The Rayleigh helper groups the 16 real coordinates at each position into eight two-dimensional row vectors. For each batch it draws $a,b\sim\mathcal{N}(0,1/2)$ independently and constructs
+\begin{equation}
+ \begin{aligned}
+ \mathbf{H}&=\begin{bmatrix}a&-b\\b&a\end{bmatrix},\\
+ \mathbf{Y}&=\mathbf{X}_{\mathrm{pair}}\mathbf{H}+\mathbf{N},\\
+ \mathbf{Z}_{\mathrm{pair}}&=\mathbf{Y}\mathbf{H}^{-1}.
+ \end{aligned}
+ \label{eq:channel}
+\end{equation}
+Here $\mathbf{X}_{\mathrm{pair}}$ is the reshaped transmitted tensor. Noise entries are independent $\mathcal{N}(0,\sigma^2)$, with the code's nominal SNR $s$ in dB mapped to
+\begin{equation}
+ \sigma(s)=\frac{1}{\sqrt{2\,10^{s/10}}}.
+ \label{eq:snr}
+\end{equation}
+The same fading matrix is used across every position and sentence in the batch. Exact inverse equalization assumes perfect channel knowledge. Reshaping gives $\mathbf{Z}\in\mathbb{R}^{B\times L\times16}$, supplied to both receivers during KD. This model does not include channel estimation error or multi-user interference; nominal SNR must also be interpreted in light of the power cap in~\eqref{eq:power}.
+
+\subsection{Teacher and Compact Student Receivers}
+For receiver $r\in\{\mathrm{T},\mathrm{S}\}$, let $G_r$ be its channel decoder, $D_r$ its semantic decoder, and $(W_r,\mathbf{b}_r)$ its vocabulary projection. For English reconstruction, the reference sequence is $\mathbf{y}=\mathbf{x}$. At target position $i$,
+\begin{align}
+ \mathbf{M}_r &=G_r(\mathbf{Z}),\\
+ \mathbf{h}_{r,i}&=D_r(\mathbf{y}_{<i},\mathbf{M}_r),\\
+ \mathbf{z}_{r,i}&=W_r\mathbf{h}_{r,i}+\mathbf{b}_r,\\
+ \mathbf{p}_{r,i}&=\operatorname{softmax}(\mathbf{z}_{r,i}).
+\end{align}
+The decoder uses causal self-attention and cross-attention to the received memory. Each channel decoder has linear dimensions $16\to128\to512\to128$, ReLU activations after the first two projections, a residual from the first projection, and LayerNorm. Teacher and Student decoders use eight/16 and four/eight layers/heads, respectively, with widths 128/512 unchanged. Each receiver has its own learned embedding and untied output projection. Sinusoidal positional encodings support length 67; dropout defaults to 0.1.
+
+The Student has no separate transmitter. Its channel decoder, embedding, semantic decoder, and output projection are independently trainable. During KD the Teacher transmitter and receiver are frozen, as shown in Fig.~\ref{fig:system}. At inference, the selected receiver generates $\widehat{\mathbf{y}}$ autoregressively from the start/control prefix until EOS or the length limit. The final decoding algorithm remains to be fixed consistently across models. Reducing attention heads at constant model width does not itself reduce the sizes of the attention projection matrices.
+
+\begin{figure}[t]
+ \centering
+ \input{figures/tikz/system_model.tex}
+ \caption{Receiver-only compression architecture during KD. Both receivers consume the same equalized noisy representation. At Student deployment, only the Student receiver is required after the retained transmitter and channel.}
+ \label{fig:system}
+\end{figure}
+
+\section{Knowledge Distillation Framework}
+\label{sec:kd}
+\subsection{Shared Observations and Teacher Forcing}
+After training the Teacher, its transmitter and receiver operate in evaluation mode with gradients disabled. The Student is initialized independently and optimized using the shared $\mathbf{Z}$ from a single channel draw per batch. Both semantic decoders receive ground-truth prefixes during training: the target sequence without its last token predicts the sequence without its first token. This teacher-forced objective is distinct from autoregressive evaluation. Fig.~\ref{fig:kd} summarizes the supervision paths.
+
+Let $i$ index all shifted target positions in a batch, $m_i=\mathbf{1}[y_i\ne\mathrm{PAD}]$, and $N=\max(1,\sum_i m_i)$. Language and EOS targets contribute to the objective; PAD targets do not.
+
+\subsection{Reconstruction and Logit Distillation}
+The reconstruction term uses reference tokens with label smoothing $\epsilon=0.1$. Defining
+\begin{equation}
+ q_i(v)=(1-\epsilon)\mathbf{1}[v=y_i]+\epsilon/V,
+\end{equation}
+its implementation is
+\begin{equation}
+ \mathcal{L}_{\mathrm{CE}}=-\frac{1}{N}\sum_i m_i
+ \sum_{v\in\mathcal{V}}q_i(v)\log p_{\mathrm{S},i}(v).
+\end{equation}
+Smoothing covers the entire vocabulary, including the PAD class, although PAD target positions are excluded.
+
+For temperature $\tau>0$, define softened predictions $\mathbf{p}_{r,i}^{(\tau)}=\operatorname{softmax}(\mathbf{z}_{r,i}/\tau)$. The logit term is
+\begin{equation}
+ \mathcal{L}_{\mathrm{KD}}=\frac{\tau^2}{N}\sum_i m_i
+ \operatorname{KL}\!\left(\mathbf{p}_{\mathrm{T},i}^{(\tau)}
+ \middle\|\mathbf{p}_{\mathrm{S},i}^{(\tau)}\right).
+\end{equation}
+Thus the divergence is Teacher-to-Student, sums across vocabulary entries, and averages across valid positions. Teacher probabilities are detached, and the $\tau^2$ factor is included.
+
+\subsection{Decoder Feature Alignment and Optimization}
+Final semantic decoder representations have the same dimension in both models. With numerical stabilizer $\delta=10^{-8}$,
+\begin{align}
+ \mathbf{u}_{r,i}&=\frac{\mathbf{h}_{r,i}}{\|\mathbf{h}_{r,i}\|_2+\delta},\\
+ \mathcal{L}_{\mathrm{feat}}&=\frac{1}{N}\sum_i m_i
+ \left(1-\mathbf{u}_{\mathrm{S},i}^{\mathsf{T}}\mathbf{u}_{\mathrm{T},i}\right)^2.
+\end{align}
+This squared cosine-to-one penalty aligns final decoder features. Intermediate-layer and channel-decoder matching are not active terms. The clamped denominator makes an all-PAD batch contribute zero for finite features.
+
+The combined objective is
+\begin{equation}
+ \mathcal{L}=\alpha\mathcal{L}_{\mathrm{CE}}+
+ \beta\mathcal{L}_{\mathrm{KD}}+\gamma\mathcal{L}_{\mathrm{feat}},
+\end{equation}
+with current settings $(\alpha,\beta,\gamma)=(0.6,0.3,0.1)$ and $\tau=2$. Only Student receiver parameters receive updates. The matched CE-only baseline uses $(1,0,0)$ with the same reconstruction smoothing, architecture, frozen transmitter, and training conditions. This comparison is intended to isolate the contribution of Teacher supervision rather than a change in Student capacity.
+
+\begin{figure}[t]
+ \centering
+ \input{figures/tikz/kd_training.tex}
+ \caption{KD training flow. Solid arrows carry observations or supervision; the dashed arrow denotes the optimization update, applied only to the Student. Both decoders use the ground-truth prefix during training.}
+ \label{fig:kd}
+\end{figure}
+
+\section{Experimental Methodology}
+\label{sec:experiments}
+\subsection{Publication Data Protocol}
+The publication study concerns English sentence reconstruction from Europarl. It adopts a new 70\%/15\%/15\% training/validation/test split, using common record IDs across relevant source files and preprocessing seed 48. Normalization applies NFKC, lowercase, punctuation spacing, and whitespace collapse. Split assignment is ID-based; normalized duplicate sentences must be checked across partitions before final training. The accepted pair counts after filtering remain TBD and need not retain the exact pre-filter proportions.
+
+A new SentencePiece BPE tokenizer will be trained exclusively on training-partition text. The requested vocabulary size is 96,000; the actual size and tokenizer hash remain TBD. PAD/BOS/EOS/UNK use IDs 0/1/2/3. The shared preprocessor can pool training IDs from several source files; the exact tokenizer corpus composition must be recorded and does not establish a multilingual reconstruction experiment. Content is filtered to 4--64 BPE tokens, then receives BOS, an English control token, and EOS, giving a maximum stored length of 67. Both current model constructors use capacity 67.
+
+The Teacher will be retrained from scratch with this tokenizer and split. Historical 90/10 artifacts are excluded from publication comparisons. Checkpoint selection uses validation only; test data are reserved for the final evaluation after the protocol is fixed. Exact data directories and split/tokenizer identities must accompany each run.
+
+\subsection{Training and Controlled Baselines}
+The Teacher architecture is specified in Section~\ref{sec:system}. Current Teacher training uses Adam with learning rate $10^{-4}$, betas $(0.9,0.98)$, epsilon $10^{-8}$, weight decay $5\times10^{-4}$, batch size 32, and seed 42. Rayleigh training samples nominal SNR uniformly from 2 to 18 dB per batch; validation uses fixed 8 dB through the same conversion in~\eqref{eq:snr}. The selected Teacher minimizes validation CE. Teacher CE is unsmoothed and aggregated over non-PAD tokens; reported perplexity is its exponent and token accuracy is teacher-forced.
+
+Once the new Teacher is finalized, two four-layer/eight-head receivers will be trained: CE-only and KD. Student defaults match the stated Adam settings and batch size, use gradient clipping at norm 1, and use the objective in Section~\ref{sec:kd}. Initialization/seed policy, training budget, data, channel conditions, and decoding must be matched. Final epochs, checkpoints, and repeated-run seeds remain TBD. The current Student script selects by its configured validation objective; a common validation selection rule for the controlled comparison must be specified before runs. Student smoothed-CE diagnostics are not interchangeable with unsmoothed Teacher perplexity.
+
+\subsection{Evaluation and Deployment Measurements}
+Teacher, CE-only Student, and KD Student will be evaluated on the untouched test partition with matched channel draws, batching, and decoding. The SNR grid, independent trial count, random seeds, and final greedy/beam settings remain TBD. Corpus BLEU must be computed from grouped hypotheses and references for each SNR/trial, rather than averaging sentence BLEU. Its final SacreBLEU signature and the semantic similarity model/revision remain TBD. Optional additional metrics and uncertainty aggregation will be fixed before test evaluation.
+
+Parameter totals will be recomputed using the final vocabulary and architecture, reporting receiver-only totals separately from the full transmitter--receiver system. Serialized size includes buffers and must be measured separately. Hardware, software versions, inference batch size, warm-up, synchronization, sequence lengths, latency aggregation, memory and FLOPs measurement remain TBD. No quality, speed, storage, or compression benefit is inferred from historical checkpoints.
+
+\section{Results and Discussion}
+\label{sec:results}
+\textit{TBD: final validated publication experiments are pending.}
+% Planned: corpus BLEU and semantic similarity versus SNR for Teacher/CE/KD;
+% final receiver/system parameter and storage tables; measured latency/FLOPs;
+% controlled loss ablations and uncertainty, if executed. No historical results.
+% Conclusion will be written after the validated Results and Abstract.
 
 \section*{Acknowledgement}
 This research was funded by CNPq (Brazil), under grants \#444978/2024-0, 201007/2025-8 and \#405026/2024-2.

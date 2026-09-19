@@ -47,7 +47,7 @@ The current active paper task is defined in:
 
 - `docs/NEXT_TASK.md`
 
-Read that file before starting substantive work. The Related Work task has been completed. The current follow-up is to audit the BPE implementation, confirm the exact Teacher/Student/KD configuration, and use it to refine the paper's novelty boundary against the closest prior work.
+Read that file before starting substantive work. The implementation audit and manuscript Sections I–V are drafted. The next task is the new publication experiment pipeline: 70/15/15 split -> new training-only BPE -> Teacher retrained from scratch -> matched CE-only/KD receivers -> untouched test evaluation. Historical 90/10 artifacts must never be mixed into publication runs. Results, Abstract and Conclusion await validated experiments.
 
 ## Research objective
 

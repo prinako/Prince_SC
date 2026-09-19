@@ -92,57 +92,191 @@ In contrast to the end-to-end Student configurations considered by Liu et al. an
 
 \section{System Model}
 \label{sec:system}
-\subsection{Text Representation and Transmitter}
-Let $\mathbf{x}=(x_1,\ldots,x_L)$ denote an encoded sentence over a vocabulary $\mathcal{V}$ of size $V$, including beginning-of-sequence, English control, and end-of-sequence tokens. Sequences are padded within a batch; padding masks are supplied to attention. The Teacher transmitter comprises semantic encoder $E_{\theta}$ and channel encoder $C_{\theta}$:
-\begin{equation}
- \mathbf{U}=E_{\theta}(\mathbf{x}),\qquad
- \mathbf{A}=C_{\theta}(\mathbf{U}).
-\end{equation}
-For batch size $B$ and padded length $L$, $\mathbf{U}\in\mathbb{R}^{B\times L\times128}$ and $\mathbf{A}\in\mathbb{R}^{B\times L\times16}$. The semantic encoder has eight Transformer layers with 16 attention heads, model width 128, and feed-forward width 512. The channel encoder is a $128\to256\to16$ linear network with an intermediate ReLU.
 
-The implementation caps the batch-wide root-mean-square (RMS) amplitude:
-\begin{equation}
- r=\sqrt{\frac{1}{16BL}\sum_{b,\ell,k} A_{b\ell k}^{2}},
- \qquad \mathbf{X}=\frac{\mathbf{A}}{\max(1,r)}.
- \label{eq:power}
-\end{equation}
-This operation includes padded positions and does not increase amplitudes when $r<1$. It is therefore a batch-wide power cap, rather than exact per-sentence unit-power normalization.
+\subsection{System Overview}
+We consider a Transformer-based text semantic communication system derived from the DeepSC architecture~\cite{xie2021deepsc}. The system comprises a semantic transmitter, a wireless channel, and a semantic receiver. In the receiver-compression setting studied here, the transmitter is inherited from a trained Teacher model and remains unchanged, while the original Teacher receiver can be replaced by a smaller Student receiver.
 
-\subsection{Channel and Equalized Representation}
-The Rayleigh helper groups the 16 real coordinates at each position into eight two-dimensional row vectors. For each batch it draws $a,b\sim\mathcal{N}(0,1/2)$ independently and constructs
+Let
 \begin{equation}
- \begin{aligned}
- \mathbf{H}&=\begin{bmatrix}a&-b\\b&a\end{bmatrix},\\
- \mathbf{Y}&=\mathbf{X}_{\mathrm{pair}}\mathbf{H}+\mathbf{N},\\
- \mathbf{Z}_{\mathrm{pair}}&=\mathbf{Y}\mathbf{H}^{-1}.
- \end{aligned}
- \label{eq:channel}
+    \mathbf{s}=(s_1,s_2,\ldots,s_L), \qquad s_i\in\mathcal{V},
 \end{equation}
-Here $\mathbf{X}_{\mathrm{pair}}$ is the reshaped transmitted tensor. Noise entries are independent $\mathcal{N}(0,\sigma^2)$, with the code's nominal SNR $s$ in dB mapped to
+denote an input token sequence of length $L$, where $\mathcal{V}$ is the BPE vocabulary of size $V$. The sequence includes the control tokens introduced by the preprocessing procedure described in Section~\ref{sec:experiments}.
+
+The end-to-end communication path is summarized as
 \begin{equation}
- \sigma(s)=\frac{1}{\sqrt{2\,10^{s/10}}}.
- \label{eq:snr}
+\mathbf{s}
+\xrightarrow{E_{\theta}}
+\mathbf{H}
+\xrightarrow{C_{\theta}}
+\mathbf{A}
+\xrightarrow{\mathcal{P}}
+\mathbf{X}
+\xrightarrow{\mathcal{C}}
+\mathbf{Z}
+\xrightarrow{R_r}
+\widehat{\mathbf{s}},
+\label{eq:system-overview}
 \end{equation}
-The same fading matrix is used across every position and sentence in the batch. Exact inverse equalization assumes perfect channel knowledge. Reshaping gives $\mathbf{Z}\in\mathbb{R}^{B\times L\times16}$, supplied to both receivers during KD. This model does not include channel estimation error or multi-user interference; nominal SNR must also be interpreted in light of the power cap in~\eqref{eq:power}.
+where $E_{\theta}$ is the Teacher semantic encoder, $C_{\theta}$ is the channel encoder, $\mathcal{P}(\cdot)$ denotes the implemented power-normalization operation, $\mathcal{C}(\cdot)$ denotes transmission through the wireless channel followed by equalization, and $R_r$ denotes either the Teacher receiver ($r=\mathrm{T}$) or the Student receiver ($r=\mathrm{S}$).
 
-\subsection{Teacher and Compact Student Receivers}
-For receiver $r\in\{\mathrm{T},\mathrm{S}\}$, let $G_r$ be its channel decoder, $D_r$ its semantic decoder, and $(W_r,\mathbf{b}_r)$ its vocabulary projection. For English reconstruction, the reference sequence is $\mathbf{y}=\mathbf{x}$. At target position $i$,
-\begin{align}
- \mathbf{M}_r &=G_r(\mathbf{Z}),\\
- \mathbf{h}_{r,i}&=D_r(\mathbf{y}_{<i},\mathbf{M}_r),\\
- \mathbf{z}_{r,i}&=W_r\mathbf{h}_{r,i}+\mathbf{b}_r,\\
- \mathbf{p}_{r,i}&=\operatorname{softmax}(\mathbf{z}_{r,i}).
-\end{align}
-The decoder uses causal self-attention and cross-attention to the received memory. Each channel decoder has linear dimensions $16\to128\to512\to128$, ReLU activations after the first two projections, a residual from the first projection, and LayerNorm. Teacher and Student decoders use eight/16 and four/eight layers/heads, respectively, with widths 128/512 unchanged. Each receiver has its own learned embedding and untied output projection. Sinusoidal positional encodings support length 67; dropout defaults to 0.1.
-
-The Student has no separate transmitter. Its channel decoder, embedding, semantic decoder, and output projection are independently trainable. During KD the Teacher transmitter and receiver are frozen, as shown in Fig.~\ref{fig:system}. At inference, the selected receiver generates $\widehat{\mathbf{y}}$ autoregressively from the start/control prefix until EOS or the length limit. The final decoding algorithm remains to be fixed consistently across models. Reducing attention heads at constant model width does not itself reduce the sizes of the attention projection matrices.
+A central property of this design is that the Teacher and Student receivers process the \emph{same} noisy channel representation $\mathbf{Z}$. The Student therefore learns to replace only the receiver rather than an independently trained end-to-end communication system. Fig.~\ref{fig:system} illustrates this receiver-only architecture.
 
 \begin{figure}[t]
- \centering
- \input{figures/tikz/system_model.tex}
- \caption{Receiver-only compression architecture during KD. Both receivers consume the same equalized noisy representation. At Student deployment, only the Student receiver is required after the retained transmitter and channel.}
- \label{fig:system}
+    \centering
+    \input{figures/tikz/system_model.tex}
+    \caption{Receiver-only semantic communication architecture. The trained Teacher transmitter is retained, while the Teacher and compact Student receivers process the same channel realization during knowledge distillation.}
+    \label{fig:system}
 \end{figure}
+
+\subsection{Semantic and Channel Transmitter}
+The semantic encoder maps the input tokens to contextual representations,
+\begin{equation}
+    \mathbf{H}=E_{\theta}(\mathbf{s}),
+    \qquad
+    \mathbf{H}\in\mathbb{R}^{B\times L\times d},
+\end{equation}
+where $B$ is the batch size and $d=128$ is the Transformer model dimension. The Teacher semantic encoder contains eight Transformer encoder layers with 16 attention heads and a feed-forward dimension of 512.
+
+The channel encoder converts each semantic representation into a lower-dimensional channel representation,
+\begin{equation}
+    \mathbf{A}=C_{\theta}(\mathbf{H}),
+    \qquad
+    \mathbf{A}\in\mathbb{R}^{B\times L\times d_c},
+\end{equation}
+where $d_c=16$. In the implementation, the channel encoder follows the mapping
+\begin{equation}
+    128 \rightarrow 256 \rightarrow 16,
+\end{equation}
+with a ReLU nonlinearity between the two linear transformations.
+
+Before transmission, the channel representation is normalized using the operation implemented in DeepSC. Defining
+\begin{equation}
+    \rho =
+    \sqrt{
+    \frac{1}{BLd_c}
+    \sum_{b=1}^{B}
+    \sum_{\ell=1}^{L}
+    \sum_{k=1}^{d_c}
+    A_{b\ell k}^{2}},
+\end{equation}
+the transmitted representation is
+\begin{equation}
+    \mathbf{X}
+    =
+    \frac{\mathbf{A}}
+    {\max(1,\rho)}.
+\label{eq:power}
+\end{equation}
+Thus, the implementation limits the batch-level root-mean-square amplitude when it exceeds one; it is not an exact per-sentence unit-power normalization. The same operation is retained for all models and experiments.
+
+\subsection{Wireless Channel}
+The main experiments consider a Rayleigh fading channel. Since the channel encoder produces $d_c=16$ real-valued coordinates per token position, the implementation groups consecutive pairs as the real and imaginary components of eight complex-valued channel symbols.
+
+For token position $\ell$ and complex channel coordinate $q$, the channel can be written compactly as
+\begin{equation}
+    y_{\ell,q}=h x_{\ell,q}+n_{\ell,q},
+\label{eq:rayleigh-channel}
+\end{equation}
+where $h\sim\mathcal{CN}(0,1)$ is the Rayleigh fading coefficient and $n_{\ell,q}$ is complex Gaussian noise. Its real and imaginary components are independently distributed as $\mathcal{N}(0,\sigma^2)$.
+
+For a nominal SNR value $s$ in dB, the implementation converts SNR to the noise standard deviation as
+\begin{equation}
+    \sigma(s)
+    =
+    \frac{1}{\sqrt{2\,10^{s/10}}}.
+\label{eq:snr}
+\end{equation}
+
+The current implementation draws one fading coefficient for an entire batch and applies exact inverse equalization using the same coefficient. Hence, the equalized channel observation is
+\begin{equation}
+    z_{\ell,q}=\frac{y_{\ell,q}}{h}.
+\label{eq:equalization}
+\end{equation}
+After conversion back to its real-valued representation, the receiver input is
+\begin{equation}
+    \mathbf{Z}\in\mathbb{R}^{B\times L\times16}.
+\end{equation}
+This corresponds to a batch-shared block-fading realization with perfect channel-state information at the receiver. The active model does not include channel-estimation error or multi-user interference.
+
+Only one channel realization is generated for a training batch. The resulting $\mathbf{Z}$ is supplied to both the frozen Teacher receiver and the trainable Student receiver. Consequently, Teacher--Student differences during distillation are not caused by independent channel draws.
+
+\subsection{Teacher and Compact Student Receivers}
+Each receiver contains a channel decoder, a Transformer semantic decoder, and a vocabulary projection layer. For receiver $r\in\{\mathrm{T},\mathrm{S}\}$, the channel decoder maps the noisy representation back to the Transformer dimension,
+\begin{equation}
+    \mathbf{M}_r=G_r(\mathbf{Z}),
+    \qquad
+    \mathbf{M}_r\in\mathbb{R}^{B\times L\times128}.
+\end{equation}
+Both receivers use the same channel-decoder architecture,
+\begin{equation}
+    16 \rightarrow 128 \rightarrow 512 \rightarrow 128,
+\end{equation}
+with ReLU nonlinearities, a residual connection from the first projection, and layer normalization. Their parameters are independent.
+
+Let $\mathbf{y}$ denote the reference output sequence. For the English reconstruction task considered in this paper, $\mathbf{y}$ corresponds to the transmitted sentence after tokenization. During training, the semantic decoder operates with teacher forcing. At target position $i$,
+\begin{equation}
+    \mathbf{h}_{r,i}
+    =D_r\!\left(\mathbf{y}_{<i},\mathbf{M}_r\right),
+\end{equation}
+where $\mathbf{y}_{<i}$ is the reference prefix preceding position $i$. The hidden representation is projected onto the vocabulary as
+\begin{equation}
+    \boldsymbol{\ell}_{r,i}
+    =W_r\mathbf{h}_{r,i}+\mathbf{b}_r,
+\end{equation}
+and the corresponding token distribution is
+\begin{equation}
+    \mathbf{p}_{r,i}
+    =\operatorname{softmax}\!\left(\boldsymbol{\ell}_{r,i}\right).
+\label{eq:receiver-probability}
+\end{equation}
+
+The Teacher and Student retain the same model width and feed-forward dimension but differ in semantic-decoder capacity. Table~\ref{tab:teacher-student-architecture} summarizes the architecture used for receiver-only compression.
+
+\begin{table*}[t]
+\centering
+\caption{Teacher and Student architecture in the receiver-only knowledge-distillation configuration.}
+\label{tab:teacher-student-architecture}
+\small
+\begin{tabular}{lccc}
+\hline
+\textbf{Component} & \textbf{Teacher} & \textbf{Student} & \textbf{Status during KD} \\
+\hline
+Semantic encoder & 8 layers, 16 heads & Not present & Teacher frozen / shared \\
+Channel encoder & $128\!\rightarrow\!256\!\rightarrow\!16$ & Not present & Teacher frozen / shared \\
+Channel decoder & $16\!\rightarrow\!128\!\rightarrow\!512\!\rightarrow\!128$ & Same architecture & Teacher frozen; Student trainable \\
+Semantic decoder & 8 layers, 16 heads & 4 layers, 8 heads & Teacher frozen; Student trainable \\
+Model dimension $d$ & 128 & 128 & Fixed \\
+Feed-forward dimension & 512 & 512 & Fixed \\
+Vocabulary projection & $128\!\rightarrow\!V$ & $128\!\rightarrow\!V$ & Teacher frozen; Student trainable \\
+Maximum positional capacity & 67 & 67 & Fixed \\
+\hline
+\end{tabular}
+\end{table*}
+
+At inference, the selected receiver generates the reconstructed sequence $\widehat{\mathbf{s}}$ autoregressively from the start/control prefix until the EOS token or the maximum sequence length. The final decoding strategy is fixed consistently across Teacher and Student models in the evaluation protocol.
+
+\subsection{Receiver-Only Compression Setting}
+Unlike an end-to-end Student that learns a new transmitter and receiver, the Student considered here contains only the receiver-side components
+\begin{equation}
+    R_{\mathrm{S}}
+    =\left\{G_{\mathrm{S}},D_{\mathrm{S}},W_{\mathrm{S}},\mathbf{b}_{\mathrm{S}}\right\}.
+\end{equation}
+During Student training, the Teacher transmitter
+\begin{equation}
+    T_{\mathrm{T}}
+    =\left\{E_{\theta},C_{\theta}\right\}
+\end{equation}
+and the complete Teacher receiver $R_{\mathrm{T}}$ are frozen. Only the Student receiver parameters are updated.
+
+Therefore, for a given source sequence and channel realization,
+\begin{equation}
+    \mathbf{Z}_{\mathrm{T}}
+    =
+    \mathbf{Z}_{\mathrm{S}}
+    =
+    \mathbf{Z}.
+\end{equation}
+The Teacher and Student differ only in how this common received semantic representation is decoded. This design isolates receiver compression from transmitter redesign and allows the compact receiver to be paired with the retained Teacher transmitter without modifying the transmitter-side semantic or channel encoders. Section~\ref{sec:kd} describes how the frozen Teacher receiver supplies output- and representation-level supervision to train this compact receiver.
 
 \section{Knowledge Distillation Framework}
 \label{sec:kd}
@@ -163,7 +297,7 @@ its implementation is
 \end{equation}
 Smoothing covers the entire vocabulary, including the PAD class, although PAD target positions are excluded.
 
-For temperature $\tau>0$, define softened predictions $\mathbf{p}_{r,i}^{(\tau)}=\operatorname{softmax}(\mathbf{z}_{r,i}/\tau)$. The logit term is
+For temperature $\tau>0$, define softened predictions $\mathbf{p}_{r,i}^{(\tau)}=\operatorname{softmax}(\boldsymbol{\ell}_{r,i}/\tau)$. The logit term is
 \begin{equation}
  \mathcal{L}_{\mathrm{KD}}=\frac{\tau^2}{N}\sum_i m_i
  \operatorname{KL}\!\left(\mathbf{p}_{\mathrm{T},i}^{(\tau)}

@@ -2,7 +2,26 @@
 
 Audit date: 2026-09-18. Status: **implementation inspection and candidate-artifact measurements complete; publication run confirmation and controlled experiments outstanding**.
 
-## 1. Evidence boundary and inspection record
+## Current-state addendum — publication protocol, 2026-09-18
+
+Current authoritative Student script SHA-256: `3b6faf47f33a2ef8ade1339e14e7ca260120727e4c1762f7443cde43d8b41092`.
+
+Verified clean DeepSC `BPE` HEAD: `0d3b119c9215fb22f427d3aa7c9629c9a7cdc18c`, later than the supplied `546884e0035f17632a7131364ab3fedfe327dd8c`. Direct inspection confirms:
+
+- `main_multi_vocab.py:243`: Teacher MAX-LENGTH is **67**, so the 68/67 issue is fixed.
+- Preprocessing lines 213–234 and 802–818: deterministic **70/15/15** split, seed 48; lines 241–274 and 950 onward train BPE from training IDs only. Force a new tokenizer or use a clean output directory because an existing model can otherwise be reused.
+- Normalization lines 81–103 applies NFKC/lowercase/**punctuation spacing**, not punctuation removal. This corrects the earlier audit description.
+- Teacher `main_multi_vocab.py:41–117,121–210` uses train/val, per-batch uniform 2–18 dB, fixed validation 8 dB through `snr_to_noise`, and token-weighted non-PAD metrics. `utils/train_utils.py` uses unsmoothed CE; teacher-forced accuracy is not decoded accuracy. Teacher initialization is fresh; best checkpoints minimize validation CE (lines 302–355). Adam defaults and batch 32 are recorded in EXPERIMENTS.md.
+- Student lines 401–420 now validate on **val**, not test. An unused `test_set` is still instantiated and loads test data; remove it before publication training. Historical hardcoded Teacher filenames remain at lines 445–446.
+- Architecture, KD objective, shared noise, and previous SNR/weight-decay/feature-denominator fixes remain unchanged in the cumulative diff.
+
+The chosen protocol is **70/15/15 → new train-only BPE → new Teacher → matched CE/KD Students → untouched test evaluation**. All earlier 90/10 measurements/checkpoints below are **HISTORICAL/CANDIDATE ONLY**, not publication evidence. No final artifact was verified or selected during this manuscript update. Final parameter totals depend on the new tokenizer/configuration and remain TBD.
+
+Remaining issues: dated preprocessing versus undated loaders (Teacher prefixes vocabulary paths separately); lack of normalized-content grouping before ID splitting; missing `val_ratio`/sum validation; conditional tokenizer reuse; unused Student test loading; historical Teacher filenames; minimal run metadata; Student CSV/batch-aggregation limitations; common CE/KD checkpoint-selection criterion; matched decoding/trials and final metric/hardware protocol. Current preprocessor pools enabled language files for train-only BPE; record that corpus composition without claiming multilingual KD experiments. The complete final-run TBD register is in EXPERIMENTS.md.
+
+**Reading the historical audit below:** its code references, hashes, test-as-validation statements, 90/10 split, old Teacher noise recipe, checkpoint counts, and pending-writing notes describe the earlier audit revisions. This addendum supersedes those statements for current implementation/protocol; it preserves them for provenance. Sections I and III–V are now drafted, with final results still pending.
+
+## 1. Historical evidence boundary and inspection record
 
 Authority is `DeepSC/train_multi_vocab_one_student.py`, not historical Student scripts. Workspace repositories inspected directly:
 

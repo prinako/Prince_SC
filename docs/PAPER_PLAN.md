@@ -88,7 +88,7 @@ A generic KD form that may be adapted after implementation confirmation is:
 
 `L = lambda_hard L_hard + lambda_KD L_KD (+ lambda_feat L_feat)`.
 
-Do not commit to KL divergence, temperature scaling, feature loss, or exact weights unless the training code/run confirms them.
+The implementation audit now confirms CE + temperature-scaled KL(Teacher || Student) + final decoder squared-cosine alignment, with weights 0.6/0.3/0.1 and temperature 2. The manuscript uses alpha/beta/gamma notation; these are configuration facts, not results.
 
 ### V. Experimental Methodology
 
@@ -151,3 +151,7 @@ Multilingual/personalized LoRA receivers may be mentioned as future work but are
 5. Add Experimental Methodology from validated configuration.
 6. Add Results only after final plots/tables are generated.
 7. Write Abstract and Conclusion last.
+
+## Current status — 2026-09-18
+
+Sections I and III–V and two TikZ figures are drafted; Section II is preserved with receiver-only positioning clarified. The publication pipeline is 70/15/15 -> new train-only BPE -> new Teacher from scratch -> matched CE/KD receivers -> untouched test evaluation. Historical 90/10 artifacts are excluded. Follow NEXT_TASK.md for final experiments, then write Results, Abstract and Conclusion. PDF compilation and visual inspection remain pending because no TeX engine is installed in this environment.

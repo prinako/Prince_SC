@@ -2,9 +2,15 @@
 
 Updated 2026-09-18 after direct inspection of the workspace DeepSC repository. **Code defaults, measured candidate artifacts, and final publication results are different evidence levels. No final run is selected here.** Exact references, loss equations, artifact hashes, checks, and prior-work comparison appear in [IMPLEMENTATION_AUDIT.md](IMPLEMENTATION_AUDIT.md).
 
+## Current publication protocol — supersedes old 90/10 candidates
+
+**70/15/15 → new train-only BPE → new Teacher from scratch → matched CE Student / KD Student → untouched test evaluation.**
+
+The split is selected policy, not a completed-run result. Use preprocessing seed 48 and common record IDs across relevant data files. Train a fresh tokenizer from training IDs only, select the retrained Teacher on validation, then freeze it for both Student runs. Use the same four-layer/eight-head Student architecture, smoothing, optimizer, seed/initialization policy, budget, data, channel conditions, and decoding across CE-only and KD experiments. The final test partition is reserved until the protocol and checkpoints are fixed. Old 90/10 Teacher/Student/tokenizer artifacts cannot enter this pipeline.
+
 ## 1. Authority and scope
 
-Implementation: `https://github.com/pesqSC/DeepSC.git`, branch `BPE`, current verified commit `dee57fbff8c42fce74e2a9974b25f15b74143548`. The authoritative Student training script is **`train_multi_vocab_one_student.py`**. Its supporting model, data, preprocessing, KD, channel, and evaluation code were inspected directly. The cleaned `test_BPE.ipynb` is now committed with cleared execution/output fields; its contents match the working-tree version inspected in the original audit. The DeepSC working tree was clean at revision verification.
+Implementation: `https://github.com/pesqSC/DeepSC.git`, branch `BPE`, current verified commit `0d3b119c9215fb22f427d3aa7c9629c9a7cdc18c`. The authoritative Student training script is **`train_multi_vocab_one_student.py`**. Its supporting model, data, preprocessing, KD, channel, and evaluation code were inspected directly. The cleaned `test_BPE.ipynb` is now committed with cleared execution/output fields; its contents match the working-tree version inspected in the original audit. The DeepSC working tree was clean at revision verification.
 
 The paper studies **English text reconstruction with a frozen Teacher transmitter and a smaller receiver trained by KD**. Multilingual tokenizer infrastructure does not establish a multilingual KD contribution. LoRA and personalized multilingual receivers remain outside scope. `train_student.py`, `R_tr_kd.py`, and alternate losses do not define this configuration.
 
@@ -17,14 +23,16 @@ The paper studies **English text reconstruction with a frozen Teacher transmitte
 | Channel decoder | Linear 16→128→512→128, ReLU, residual, LayerNorm | Same architecture; independently trainable |
 | Semantic decoder | 8 layers, 16 heads | 4 layers, 8 heads |
 | Model / feed-forward width | 128 / 512 | 128 / 512 |
-| Vocabulary / output head | Candidate V=96,000; untied Linear 128→V | Same vocabulary and head dimensions |
+| Vocabulary / output head | Requested V=96,000; final V TBD; untied Linear 128→V | Same vocabulary and head dimensions |
 | Positional capacity in current script | 67 | 67 |
 | Dropout default | 0.1 | 0.1 |
 | During Student training | Transmitter and entire Teacher receiver frozen, eval mode | Entire receiver trainable, train mode |
 
 The Student has no semantic/channel encoder. Both receivers see the **same realization** of the noisy transmitted tensor. Student initialization is fresh; the `--init-student-from-teacher` flag is unused. Attention projections retain width 128: reducing head count alone does **not** reduce their parameter count. The layer reduction supplies the parameter saving.
 
-## 3. Candidate artifacts and measured parameters
+## 3. HISTORICAL 90/10 artifacts and measured parameters
+
+**Historical/candidate evidence only. None of these artifacts or counts is a final publication result; all final counts must be recomputed from the new vocabulary and checkpoints.**
 
 The default checkpoint directory is `./checkpoints/deepsc-Rayleigh/multilingual_bpe/2026-09-15`, with hardcoded filenames `encoder_26.pth` and `decoder_26.pth`. These defaults do not resolve to the available artifacts. The notebook associates the following actual files with the 2026-09-12 BPE data:
 
@@ -62,7 +70,9 @@ Measured serialized files: Teacher transmitter **55,726,451 bytes**, Teacher rec
 
 Teacher forcing uses `trg[:, :-1]` to predict `trg[:, 1:]`; language and EOS tokens contribute, PAD does not. Transmitter and Teacher forward passes run under `no_grad`. Channel-decoder feature MSE is commented out. Exact equations and masking caveats are in the audit.
 
-## 5. Data and BPE — measured candidate, not final split selection
+## 5. HISTORICAL 90/10 data measurements
+
+**The following September 11/12 artifacts predate the selected 70/15/15 publication pipeline.**
 
 `EurParallelDatasetBPE(args.en, split)` defaults to **en_en** and the hardcoded undated directory `./data/train/europarl_bpe`. The vocabulary flag alone does not redirect dataset files. Undated defaults are missing in this workspace; dated artifacts exist.
 
@@ -73,9 +83,9 @@ Candidate: `data/train/europarl_bpe/2026-09-12/`. Its JSON mapping matches all 9
 | `train_en_en.pkl` | **1,391,914** | 1,391,875 | 7–67 |
 | `test_en_en.pkl` | **154,651** | 154,650 | 7–66 |
 
-All inspected English pairs have identical source/target sequences and `[START, EN, content, END]` structure. **Eight unique token sequences occur in both splits.** The training script uses `test` for validation and best-checkpoint selection; it does not provide an untouched third split. These counts must not be described as independent train/validation/test evidence.
+All inspected English pairs have identical source/target sequences and `[START, EN, content, END]` structure. **Eight unique token sequences occur in both splits.** The historical training script used `test` for validation and checkpoint selection. Current Teacher and Student validation loaders now use `val`; the Student still instantiates an unused `test_set`, which should be removed from publication training. These counts must not be described as independent train/validation/test evidence.
 
-Preprocessing code uses Europarl JSON, NFKC/lowercase/punctuation/whitespace normalization, an ID-based 90/10 split with default seed 48, and SentencePiece BPE trained from training IDs across enabled language pairs. It filters content lengths 4–64 and adds three special tokens. Exact corpus release, preprocessing invocation, tokenizer training provenance, split repair, and final held-out test remain **TBD**. The separate 2026-09-11 tokenizer has V=32,000 and must not be mixed with the 96,000-token checkpoints.
+Historical preprocessing used Europarl JSON, NFKC/lowercase/punctuation-spacing/whitespace normalization, an ID-based 90/10 split with default seed 48, and SentencePiece BPE trained from training IDs across enabled language pairs. It filters content lengths 4–64 and adds three special tokens. Exact corpus release, preprocessing invocation, tokenizer training provenance, split repair, and final held-out test remain **TBD**. The separate 2026-09-11 tokenizer has V=32,000 and must not be mixed with the 96,000-token checkpoints.
 
 ## 6. Channel and SNR — conversion fixed
 
@@ -99,7 +109,7 @@ Audit environment, **not proven training environment**: Python 3.12.13, PyTorch 
 
 ## 8. Baselines, decoding, and metrics
 
-No matching **4-layer/8-head CE-only Student** run was identified in the inspected scripts/artifact inventory. Sixteen Student checkpoints were examined; the sole 4-layer/96,000-token candidate has active KD metadata. Absence from this workspace is not proof no such run exists elsewhere. Train or locate and verify this required baseline.
+In the historical inventory, no matching **4-layer/8-head CE-only Student** run was identified in the inspected scripts/artifact inventory. Sixteen Student checkpoints were examined; the sole 4-layer/96,000-token candidate has active KD metadata. Absence from this workspace is not proof no such run exists elsewhere. Train or locate and verify this required baseline.
 
 `--alpha 1 --beta 0 --gamma 0` expresses the CE-only objective in this script, with the same label smoothing and frozen transmitter; it still computes the unused Teacher/KD terms. This is a proposed baseline recipe, **not an executed experiment**, and path/protocol issues must be resolved first.
 
@@ -107,16 +117,30 @@ BPE greedy and beam utilities exist. The notebook compares Teacher **greedy** wi
 
 Available metrics include SacreBLEU sentence BLEU (exponential smoothing), corpus BLEU, and sentence-transformer cosine similarity. The default semantic model is `sentence-transformers/paraphrase-multilingual-mpnet-base-v2`; notebook alternatives exist. A mean of sentence BLEU is not corpus BLEU, and NLTK [0,1] scores must not be mixed with SacreBLEU [0,100] scores. Final metric signature, semantic model/revision, aggregation, seeds, latency protocol, and hardware are TBD.
 
-| Required model | Receiver | Candidate parameter count | Validated final quality / latency |
+| Required model | Receiver | Final publication parameter count | Validated final quality / latency |
 |---|---|---:|---|
-| Teacher | 8 layers / 16 heads | 26,922,752 | TBD |
-| Student without KD | 4 layers / 8 heads | 25,864,448 if V=96,000 | Run not identified; TBD |
-| Student with KD | 4 layers / 8 heads | 25,864,448 | TBD |
+| Teacher | 8 layers / 16 heads | TBD | TBD |
+| Student without KD | 4 layers / 8 heads | TBD | TBD |
+| Student with KD | 4 layers / 8 heads | TBD | TBD |
 
-## 9. Before publication experiments and Methods drafting
+## 9. Current publication implementation and remaining TBDs
 
-1. Resolve paths and the Student positional-buffer/run-provenance discrepancy; designate exact Teacher, Student, vocabulary, and data artifacts.
-2. Use the corrected SNR/validation settings in documented publication runs; separate validation from untouched test data and address token-sequence overlap.
-3. Produce the matched CE-only baseline and KD ablations; fix shared decoding, SNR grid, seeds/channel trials, and metric signatures.
-4. Measure reconstruction quality and deployment cost on the finalized protocol. Parameter savings alone establish neither quality preservation nor faster inference/storage savings.
-5. Write Section III (System Model) and Section IV (KD Framework) from the verified architecture/objective, explicitly retaining unresolved experimental choices as TBD. Use the audit's prior-work matrix to bound the contribution. No final Results or novelty claim is authorized by this audit.
+Verified DeepSC head: `0d3b119c9215fb22f427d3aa7c9629c9a7cdc18c` (clean `BPE` working tree). `main_multi_vocab.py:243` now defaults to **MAX-LENGTH=67**: the reported Teacher 68 vs Student 67 mismatch is fixed. Historical Student checkpoints with a 96,000-position buffer remain historical and are not repaired or reused.
+
+`main_multi_vocab.py:41–117,121–210,230–355` now trains on `train` and validates on `val`, shuffling only training. It samples uniform 2–18 dB per batch, validates at 8 dB using the common noise helper, and supports fixed SNR. Teacher optimization: Adam LR 1e-4, betas (0.9,0.98), epsilon 1e-8, weight decay 5e-4, batch 32, seed 42, fresh initialization. Teacher CE has **label smoothing 0.0** (`utils/train_utils.py:13–92,122–192`), token-weighted epoch CE, exp(CE) perplexity, and teacher-forced token accuracy. Best Teacher saves minimize validation CE; CSV includes SNR min/mean/max, validation SNR, LR and epoch time. Default budgets (Teacher 50, Student 10 epochs) are code defaults, not selected final best epochs.
+
+Preprocessing `make_split_ids` (lines 213–234) now returns deterministic 70/15/15 partitions; training-text iteration (lines 241–274) excludes validation/test IDs. ID partition proportions precede length filtering. Tokenizer training is conditional: a pre-existing model can be reused unless `--force-retrain-tokenizer` is set. Publication preprocessing must force a new tokenizer or use a verified empty output location. Enabled source files currently include en_en/en_pt/en_es/en_fr; record the final tokenizer corpus composition, without treating it as multilingual reconstruction evidence. Normalization spaces punctuation; it does not remove it.
+
+Remaining engineering/provenance issues:
+
+- Both training scripts use the dataset's undated default directory, while preprocessing appends a date. Teacher vocabulary paths are additionally prefixed with `./data/train/`. A vocabulary override does not redirect dataset pickles. Record and align actual paths explicitly.
+- ID splitting does not group normalized duplicate sentences. Check/group content before freezing the publication split; final overlap status is TBD.
+- Preprocessing validates `train_ratio` but not `val_ratio` or their sum. Validate nonnegative ratios and total below one before publication preprocessing.
+- Student validation uses `val`, but the unused `test_set` is still loaded at lines 401–403. Remove this unnecessary test dependency before Student training.
+- Student Teacher filenames remain hardcoded `encoder_26.pth`/`decoder_26.pth`. Configure the newly selected Teacher explicitly; never rename an old checkpoint to satisfy these defaults.
+- Teacher checkpoint files still lack a complete run manifest. Student metadata and CSV limitations described above remain.
+- Current Student best selection uses the configured composite objective, unlike Teacher validation CE. Choose and document a common CE/KD Student selection rule before running the controlled comparison.
+
+Final **TBD register** (no final artifacts selected in this update): corpus release/source hashes; normalized-duplicate policy and measured overlap; valid split manifest/IDs and accepted train/val/test counts; exact data directories; tokenizer corpus composition, invocation, hash and actual V; Teacher/CE/KD checkpoints, hashes, training budgets and best epochs; source revision and full training environment; initialization and repeated-run seed policy; common Student checkpoint-selection rule; evaluation SNR grid and independent channel/noise trials; matched decoding parameters and batching; corpus BLEU signature; semantic model/version/revision and normalization; retained optional metrics and uncertainty aggregation; hardware/GPU; inference warm-up, synchronization, sequence lengths and timing aggregation; final receiver/full-system parameters, compression, serialized size, memory, latency and FLOPs if reported; final quality and ablation results.
+
+The manuscript now drafts Sections I and III–V, preserves Section II, and leaves Results, Abstract, and Conclusion pending. Follow [NEXT_TASK.md](NEXT_TASK.md) for the experiment sequence.

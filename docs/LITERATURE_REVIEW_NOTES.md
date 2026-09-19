@@ -141,3 +141,7 @@ Next research action: inspect the actual KD implementation and validated runs, t
 - The bibliography style is now `IEEEtran` for IEEE reference rendering; the class and author/funding content are unchanged.
 - Citation-key consistency, duplicate-key/title/DOI checks, balanced braces and section placement are checked locally. Full PDF/BibTeX compilation and visual reference inspection are unavailable because this environment has no TeX toolchain.
 - No outstanding unverified metadata is knowingly used in the new entries. Final novelty assessment requires the experimental record, full-protocol comparison with the closest studies, and a publication-status refresh for Eid. Numerical claims from these sources have deliberately not been imported.
+
+## Implementation-positioning update — 2026-09-18
+
+The research-gap assessment and quoted Section II wording above record the original literature-review stage. The subsequent implementation audit confirms receiver-only compression, a frozen retained transmitter, and the exact CE/KL/final-decoder feature objective; its Liu/Eid matrix is in IMPLEMENTATION_AUDIT.md. Section II now states this verified scope and makes the matched CE-only baseline mandatory. Global novelty and performance benefits remain unestablished. New publication experiments use 70/15/15, a new training-only tokenizer and a retrained Teacher. The Introduction reuses the verified DeepSC and KD references; their primary arXiv records were rechecked during drafting. No new bibliography entries were required.

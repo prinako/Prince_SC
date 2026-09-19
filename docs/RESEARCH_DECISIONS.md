@@ -64,3 +64,13 @@ These are **verified implementation facts for the current code path**, not final
 - Prefer the final published version of a reference over a preprint when available.
 - Keep the KD paper contribution separate from the multilingual/LoRA contribution.
 - Treat code defaults as candidate configuration until the exact publication run/checkpoints are designated.
+
+## 2026-09-18 — Publication rerun supersedes historical candidates
+
+**70/15/15 → new train-only BPE → new Teacher from scratch → matched CE Student / KD Student → untouched test evaluation.**
+
+The split is selected policy, not a completed-run result. Use preprocessing seed 48 and common record IDs across relevant data files. Train a fresh tokenizer from training IDs only, select the retrained Teacher on validation, then freeze it for both Student runs. Use the same four-layer/eight-head Student architecture, smoothing, optimizer, seed/initialization policy, budget, data, channel conditions, and decoding across CE-only and KD experiments. The final test partition is reserved until the protocol and checkpoints are fixed. Old 90/10 Teacher/Student/tokenizer artifacts cannot enter this pipeline.
+
+**Decision:** the new Teacher must be trained from scratch. The CE-only Student uses alpha/beta/gamma=1/0/0 with the same 0.1 Student CE smoothing as KD. Corpus BLEU is aggregated over grouped test hypotheses/references per SNR/trial; mean sentence BLEU is not a substitute. Decoding and channel draws must be matched. Final run identities, counts, metric signatures and measurement settings remain TBD in EXPERIMENTS.md.
+
+**Implementation confirmation:** DeepSC `0d3b119c9215fb22f427d3aa7c9629c9a7cdc18c` uses train/val loaders and Teacher MAX-LENGTH=67. This fixes the earlier 68/67 configuration issue. Remaining path, duplicate-content, split-ratio validation, unused test loading, historical Teacher filename, and run-manifest issues are tracked in IMPLEMENTATION_AUDIT.md. No final run or numerical result was selected.

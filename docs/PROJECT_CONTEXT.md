@@ -53,6 +53,12 @@ That multilingual/LoRA work is **not** the contribution of this KD paper.
 
 It can be mentioned as future work or broader project context only when useful and explicitly appropriate.
 
+## Current publication protocol — supersedes old 90/10 candidates
+
+**70/15/15 → new train-only BPE → new Teacher from scratch → matched CE Student / KD Student → untouched test evaluation.**
+
+The split is selected policy, not a completed-run result. Use preprocessing seed 48 and common record IDs across relevant data files. Train a fresh tokenizer from training IDs only, select the retrained Teacher on validation, then freeze it for both Student runs. Use the same four-layer/eight-head Student architecture, smoothing, optimizer, seed/initialization policy, budget, data, channel conditions, and decoding across CE-only and KD experiments. The final test partition is reserved until the protocol and checkpoints are fixed. Old 90/10 Teacher/Student/tokenizer artifacts cannot enter this pipeline.
+
 ## 6. Known historical implementation context
 
 The wider project has previously worked with DeepSC-style checkpoints where encoder-side and decoder-side states were loaded separately. Historical paths seen during experimentation included entries such as:
@@ -68,3 +74,7 @@ These are historical implementation notes, not automatically the final checkpoin
 ## 7. Research integrity rule
 
 This repository is an article workspace, not the authoritative source of experimental numbers unless those numbers have been copied here from validated runs. When information is missing, retain `TBD` rather than reconstructing values from memory or making an estimate.
+
+## Current manuscript status
+
+Sections I and III–V and two TikZ flow figures are drafted. Section II retains its prior-work structure with receiver-only positioning clarified. Abstract, Results and Conclusion await validated publication experiments. Implementation checked at DeepSC `0d3b119c9215fb22f427d3aa7c9629c9a7cdc18c`; Teacher maximum length 67 is now aligned with preprocessing and Student. See EXPERIMENTS.md for the complete TBD register and NEXT_TASK.md for execution order.

@@ -1,0 +1,29 @@
+\begin{tikzpicture}[font=\footnotesize, >=Latex,
+ block/.style={draw,rounded corners,align=center,minimum height=7mm},
+ flow/.style={->,thick}]
+ \node (src) at (0,0) {Source $\mathbf{x}$};
+ \node[block,text width=32mm] (tx) at (0,-0.7) {Frozen Teacher TX};
+ \node[block,text width=32mm] (z) at (0,-1.6) {Channel / shared $\mathbf{Z}$};
+ \node[block,text width=27mm,fill=gray!10] (t) at (-1.8,-2.65)
+ {Frozen Teacher RX\\Logits / features};
+ \node[block,text width=27mm,fill=blue!6] (s) at (1.8,-2.65)
+ {Trainable Student RX\\Logits / features};
+ \node[block,text width=28mm] (dist) at (-1.5,-3.95)
+ {KL + feature alignment\\$\mathcal{L}_{\mathrm{KD}},\mathcal{L}_{\mathrm{feat}}$};
+ \node[block,text width=14mm] (ce) at (2.15,-3.95) {$\mathcal{L}_{\mathrm{CE}}$};
+ \node[align=center] (target) at (2.15,-4.85) {Reference\\targets};
+ \node[block,text width=26mm] (total) at (-1.5,-5.45) {Weighted loss $\mathcal{L}$};
+ \draw[flow] (src)--(tx);
+ \draw[flow] (tx)--(z);
+ \draw[flow] (z.south)--++(0,-0.2)-|(t.north);
+ \draw[flow] (z.south)--++(0,-0.2)-|(s.north);
+ \draw[flow] (t)--(dist);
+ \draw[flow] (s.south)--++(0,-0.25)-|(dist.north east);
+ \draw[flow] (s)--(ce);
+ \draw[flow] (target)--(ce);
+ \draw[flow] (dist)--(total);
+ \draw[flow] (ce.east)--++(0.35,0)|-(total.east);
+ \draw[flow,dashed] (total.west)--++(-0.45,0)--(-3.65,-6.15)
+ --(3.7,-6.15)--(3.7,-2.65)--(s.east);
+ \node[font=\scriptsize,fill=white] at (0,-6.15) {Gradient update: Student only};
+\end{tikzpicture}

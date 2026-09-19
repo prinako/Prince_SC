@@ -10,25 +10,56 @@ The paper focuses on this pipeline only:
 
 Do not merge this contribution with the separate multilingual/personalized-receiver work based on LoRA unless the user explicitly asks for cross-paper discussion.
 
+## Workspace and implementation source of truth
+
+The Codex workspace contains both repositories:
+
+- `Prince_SC` — IEEE paper repository;
+- `DeepSC` — implementation repository corresponding to `https://github.com/pesqSC/DeepSC.git`.
+
+For implementation-dependent paper work, inspect the **workspace copy of `DeepSC` directly** rather than relying only on summaries in the paper repository.
+
+The active implementation branch is:
+
+- `DeepSC`: `BPE`
+
+The authoritative Student/KD training script for this paper is:
+
+- `DeepSC/train_multi_vocab_one_student.py`
+
+Treat this script as the primary source for the Student architecture, Teacher configuration used for KD, active loss terms, hyperparameters, dataset/tokenization path, channel configuration, SNR sampling, optimizer setup, and checkpoint naming.
+
+Supporting implementation files include:
+
+- `DeepSC/student.py` — receiver-only Student definition;
+- `DeepSC/teacher.py` — Teacher helper functions;
+- `DeepSC/models/transceiver.py` — DeepSC architecture;
+- `DeepSC/models/tx_model.py` and `DeepSC/models/rx_model.py` — separated transmitter/receiver wrappers;
+- `DeepSC/utils/kd_utils.py` — KD and feature-distillation losses;
+- `DeepSC/utils/train_utils.py` — training/validation helpers;
+- `DeepSC/dataset_multilingual.py` and `DeepSC/utils/bpe_utils.py` — BPE data/tokenization support.
+
+Older or alternate KD scripts such as `DeepSC/train_student.py`, `DeepSC/R_tr_kd.py`, and `DeepSC/kd_training_loss.py` are historical/alternative variants. Do not use them to define the paper configuration unless the user explicitly asks for a comparison. If they conflict with `train_multi_vocab_one_student.py`, the latter controls the current paper setup.
+
 ## Current task
 
 The current active paper task is defined in:
 
 - `docs/NEXT_TASK.md`
 
-Read that file before starting substantive work. At present, the task is to research, verify, and draft **Section II: Related Work** only, including literature notes and verified bibliography updates.
+Read that file before starting substantive work. The implementation audit and manuscript Sections I–V are drafted. The next task is the new publication experiment pipeline: 70/15/15 split -> new training-only BPE -> Teacher retrained from scratch -> matched CE-only/KD receivers -> untouched test evaluation. Historical 90/10 artifacts must never be mixed into publication runs. Results, Abstract and Conclusion await validated experiments.
 
 ## Research objective
 
-Investigate whether Knowledge Distillation can reduce the size and computational cost of a Transformer-based text semantic communication model while preserving semantic reconstruction quality across noisy channel conditions.
+Investigate whether Knowledge Distillation can reduce the size and computational cost of a Transformer-based text semantic communication receiver while preserving semantic reconstruction quality across noisy channel conditions.
 
 The core comparison should distinguish:
 
-1. the original Teacher semantic communication model;
+1. the original Teacher semantic communication model/receiver;
 2. a smaller Student trained without KD, when such a baseline is available;
 3. the smaller Student trained with KD.
 
-Do not invent results, architecture dimensions, parameter counts, loss weights, SNR values, datasets, or checkpoints. If the repository/context files do not establish a value, mark it as `TBD` and ask for or locate the experimental record before using it as a paper fact.
+Do not invent results, architecture dimensions, parameter counts, loss weights, SNR values, datasets, or checkpoints. If the repositories/context files do not establish a value, mark it as `TBD` and locate the experimental record before using it as a paper fact.
 
 ## Required context
 
@@ -39,6 +70,7 @@ Before substantial paper work, read:
 - `docs/PAPER_PLAN.md`
 - `docs/EXPERIMENTS.md`
 - `docs/RESEARCH_DECISIONS.md`
+- `docs/LITERATURE_REVIEW_NOTES.md` when working on positioning or citations.
 
 Keep those files updated when a research decision or confirmed experimental fact changes.
 
@@ -72,7 +104,7 @@ For literature claims:
 
 The broader research project also studies a shared semantic transmitter with personalized receivers, multilingual adaptation, and LoRA (including Portuguese and potentially other languages). That is a separate paper/research direction.
 
-For this repository, keep the contribution centered on model compression/knowledge transfer from the SC Teacher to the Student.
+The active `BPE` implementation branch contains multilingual/BPE code because it is shared by the wider project. For this paper, use only the English/KD evidence needed to study Teacher-to-Student receiver compression unless the user explicitly expands the scope.
 
 ## Working branch
 

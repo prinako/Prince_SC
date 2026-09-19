@@ -1,0 +1,26 @@
+% Single-column fragment; dimensions intentionally below IEEE column width.
+\begin{tikzpicture}[font=\footnotesize, >=Latex,
+ block/.style={draw,rounded corners,align=center,minimum height=7mm,text width=35mm},
+ flow/.style={->,thick}]
+ \node (input) at (0,0) {Input text / tokens $\mathbf{x}$};
+ \node[block] (sem) at (0,-0.8) {Teacher semantic encoder};
+ \node[block] (enc) at (0,-1.7) {Teacher channel encoder};
+ \node[draw,dashed,fit=(sem)(enc),inner sep=3mm,
+ label={[font=\scriptsize]right:Frozen TX}] {};
+ \node[block] (channel) at (0,-2.8) {Power cap, Rayleigh channel, equalization};
+ \node (z) at (0,-3.65) {Shared noisy representation $\mathbf{Z}$};
+ \node[block,text width=29mm,fill=gray!10] (teacher) at (-1.9,-4.75)
+ {Teacher receiver\\8 layers / 16 heads\\Frozen};
+ \node[block,text width=29mm,fill=blue!6] (student) at (1.9,-4.75)
+ {Compact Student RX\\4 layers / 8 heads\\Trainable};
+ \node[align=center] (tout) at (-1.9,-5.85) {Teacher logits\\and features};
+ \node[align=center] (sout) at (1.9,-5.85) {Student logits\\and features};
+ \draw[flow] (input)--(sem);
+ \draw[flow] (sem)--(enc);
+ \draw[flow] (enc)--(channel);
+ \draw[flow] (channel)--(z);
+ \draw[flow] (z.south)--++(0,-0.25)-|(teacher.north);
+ \draw[flow] (z.south)--++(0,-0.25)-|(student.north);
+ \draw[flow] (teacher)--(tout);
+ \draw[flow] (student)--(sout);
+\end{tikzpicture}

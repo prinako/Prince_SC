@@ -169,6 +169,27 @@ the transmitted representation is
 \end{equation}
 Thus, the implementation limits the batch-level root-mean-square amplitude when it exceeds one; it is not an exact per-sentence unit-power normalization. The same operation is retained for all models and experiments.
 
+Algorithm~\ref{alg:transmitter} summarizes the transmitter and channel path that produces the shared received representation used by both receivers.
+
+\begin{algorithm}[t]
+\caption{Semantic Transmitter and Channel Propagation}
+\label{alg:transmitter}
+\small
+\KwIn{Source tokens $\mathbf{s}$; source mask; semantic encoder $E_{\theta}$; channel encoder $C_{\theta}$; channel $\mathcal{C}$; nominal SNR $s_{\mathrm{dB}}$}
+\KwOut{Shared received representation $\mathbf{Z}$}
+$\mathbf{H}\leftarrow E_{\theta}(\mathbf{s})$ using the source mask\;
+$\mathbf{A}\leftarrow C_{\theta}(\mathbf{H})$\;
+$\rho\leftarrow\sqrt{\operatorname{mean}(\mathbf{A}\odot\mathbf{A})}$\;
+\eIf{$\rho>1$}{
+    $\mathbf{X}\leftarrow\mathbf{A}/\rho$\;
+}{
+    $\mathbf{X}\leftarrow\mathbf{A}$\;
+}
+$\sigma\leftarrow 1/\sqrt{2\,10^{s_{\mathrm{dB}}/10}}$\;
+$\mathbf{Z}\leftarrow\mathcal{C}(\mathbf{X};\sigma)$, including the configured fading/noise model and equalization\;
+\Return{$\mathbf{Z}$}\;
+\end{algorithm}
+
 \subsection{Wireless Channel}
 The main experiments consider a Rayleigh fading channel. Since the channel encoder produces $d_c=16$ real-valued coordinates per token position, the implementation groups consecutive pairs as the real and imaginary components of eight complex-valued channel symbols.
 
@@ -252,6 +273,21 @@ Maximum positional capacity & 67 & 67 & Fixed \\
 \hline
 \end{tabular}
 \end{table*}
+
+Algorithm~\ref{alg:receiver} summarizes the receiver forward path used by either the Teacher or the Student. The two receivers share the same computational sequence but use independent parameters and different semantic-decoder depths.
+
+\begin{algorithm}[t]
+\caption{Semantic Receiver Forward Processing}
+\label{alg:receiver}
+\small
+\KwIn{Received representation $\mathbf{Z}$; target prefix $\mathbf{y}_{\mathrm{in}}$; receiver $R_r=\{G_r,D_r,W_r,\mathbf{b}_r\}$; causal and padding masks}
+\KwOut{Logits $\boldsymbol{\ell}_r$, channel-decoder features $\mathbf{M}_r$, decoder features $\mathbf{H}^{\mathrm{dec}}_r$}
+$\mathbf{M}_r\leftarrow G_r(\mathbf{Z})$\;
+$\mathbf{H}^{\mathrm{dec}}_r\leftarrow D_r(\mathbf{y}_{\mathrm{in}},\mathbf{M}_r)$ using causal and padding masks\;
+$\boldsymbol{\ell}_r\leftarrow W_r\mathbf{H}^{\mathrm{dec}}_r+\mathbf{b}_r$\;
+$\mathbf{p}_r\leftarrow\operatorname{softmax}(\boldsymbol{\ell}_r)$ when token probabilities are required\;
+\Return{$\boldsymbol{\ell}_r,\mathbf{M}_r,\mathbf{H}^{\mathrm{dec}}_r$}\;
+\end{algorithm}
 
 At inference, the selected receiver generates the reconstructed sequence $\widehat{\mathbf{s}}$ autoregressively from the start/control prefix until the EOS token or the maximum sequence length. The final decoding strategy is fixed consistently across Teacher and Student models in the evaluation protocol.
 

@@ -321,6 +321,33 @@ The combined objective is
 \end{equation}
 with current settings $(\alpha,\beta,\gamma)=(0.6,0.3,0.1)$ and $\tau=2$. Only Student receiver parameters receive updates. The matched CE-only baseline uses $(1,0,0)$ with the same reconstruction smoothing, architecture, frozen transmitter, and training conditions. This comparison is intended to isolate the contribution of Teacher supervision rather than a change in Student capacity.
 
+Algorithm~\ref{alg:receiver-kd} summarizes one training epoch of the receiver-only KD procedure. The Teacher transmitter and receiver remain frozen throughout the loop, and the same channel realization is reused for both receiver forward passes.
+
+\begin{algorithm}[t]
+\caption{Receiver-Only Knowledge Distillation Training}
+\label{alg:receiver-kd}
+\small
+\KwIn{Training loader $\mathcal{D}$; frozen transmitter $T_{\mathrm{T}}$; frozen Teacher receiver $R_{\mathrm{T}}$; Student receiver $R_{\mathrm{S}}$; channel $\mathcal{C}$; optimizer; $\alpha,\beta,\gamma$; temperature $\tau$}
+\KwOut{Updated Student receiver $R_{\mathrm{S}}$}
+Set $T_{\mathrm{T}}$ and $R_{\mathrm{T}}$ to evaluation mode and freeze their parameters\;
+Set $R_{\mathrm{S}}$ to training mode\;
+\ForEach{mini-batch $(\mathbf{s},\mathbf{y})\in\mathcal{D}$}{
+    $\mathbf{y}_{\mathrm{in}}\leftarrow\mathbf{y}_{:,:-1}$; $\mathbf{y}_{\mathrm{out}}\leftarrow\mathbf{y}_{:,1:}$\;
+    Construct source, padding, and causal masks\;
+    Sample $s_{\mathrm{dB}}\sim\mathcal{U}(s_{\min},s_{\max})$ (or use the configured fixed SNR) and compute $\sigma(s_{\mathrm{dB}})$\;
+    Compute shared $\mathbf{Z}\leftarrow\mathcal{C}(T_{\mathrm{T}}(\mathbf{s}),\sigma)$ without gradients\;
+    Compute Teacher logits/features $(\boldsymbol{\ell}_{\mathrm{T}},\mathbf{H}^{\mathrm{dec}}_{\mathrm{T}})\leftarrow R_{\mathrm{T}}(\mathbf{Z},\mathbf{y}_{\mathrm{in}})$ without gradients\;
+    Compute Student logits/features $(\boldsymbol{\ell}_{\mathrm{S}},\mathbf{H}^{\mathrm{dec}}_{\mathrm{S}})\leftarrow R_{\mathrm{S}}(\mathbf{Z},\mathbf{y}_{\mathrm{in}})$\;
+    Compute masked $\mathcal{L}_{\mathrm{CE}}$ from $(\boldsymbol{\ell}_{\mathrm{S}},\mathbf{y}_{\mathrm{out}})$ with label smoothing $\epsilon=0.1$\;
+    Compute $\mathcal{L}_{\mathrm{KD}}$ from Teacher/Student logits at temperature $\tau$\;
+    Compute $\mathcal{L}_{\mathrm{feat}}$ from final decoder features $\mathbf{H}^{\mathrm{dec}}_{\mathrm{T}}$ and $\mathbf{H}^{\mathrm{dec}}_{\mathrm{S}}$\;
+    $\mathcal{L}\leftarrow\alpha\mathcal{L}_{\mathrm{CE}}+\beta\mathcal{L}_{\mathrm{KD}}+\gamma\mathcal{L}_{\mathrm{feat}}$\;
+    Clear Student gradients and backpropagate $\mathcal{L}$\;
+    Clip the Student gradient norm when configured and update only $R_{\mathrm{S}}$\;
+}
+\Return{$R_{\mathrm{S}}$}\;
+\end{algorithm}
+
 \begin{figure}[t]
  \centering
  \input{figures/tikz/kd_training.tex}
